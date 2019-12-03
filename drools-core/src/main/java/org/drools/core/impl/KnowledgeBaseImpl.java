@@ -51,7 +51,6 @@ import org.drools.core.common.DroolsObjectInputStream;
 import org.drools.core.common.DroolsObjectOutputStream;
 import org.drools.core.common.InternalAgenda;
 import org.drools.core.common.InternalWorkingMemory;
-import org.drools.core.common.ProjectClassLoader;
 import org.drools.core.common.RuleBasePartitionId;
 import org.drools.core.definitions.InternalKnowledgePackage;
 import org.drools.core.definitions.impl.KnowledgePackageImpl;
@@ -88,6 +87,7 @@ import org.drools.core.rule.WindowDeclaration;
 import org.drools.core.ruleunit.RuleUnitDescriptionRegistry;
 import org.drools.core.spi.FactHandleFactory;
 import org.drools.core.util.TripleStore;
+import org.drools.reflective.classloader.ProjectClassLoader;
 import org.kie.api.builder.ReleaseId;
 import org.kie.api.conf.EventProcessingOption;
 import org.kie.api.definition.KiePackage;
@@ -110,10 +110,10 @@ import org.kie.api.runtime.StatelessKieSession;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import static org.drools.core.common.ProjectClassLoader.createProjectClassLoader;
 import static org.drools.core.util.BitMaskUtil.isSet;
 import static org.drools.core.util.ClassUtils.areNullSafeEquals;
 import static org.drools.core.util.ClassUtils.convertClassToResourcePath;
+import static org.drools.reflective.classloader.ProjectClassLoader.createProjectClassLoader;
 
 public class KnowledgeBaseImpl
     implements
@@ -555,7 +555,7 @@ public class KnowledgeBaseImpl
             // must write this option first in order to properly deserialize later
             droolsStream.writeBoolean(this.config.isClassLoaderCacheEnabled());
 
-            droolsStream.writeObject(((ProjectClassLoader) rootClassLoader).getStore());
+            droolsStream.writeObject((( ProjectClassLoader ) rootClassLoader).getStore());
 
             droolsStream.writeObject(this.config);
             droolsStream.writeObject(this.pkgs);
@@ -1240,32 +1240,21 @@ public class KnowledgeBaseImpl
             pkg.addStaticImport(staticImport);
         }
 
-        String lastIdent = null;
-        String lastType = null;
-        try {
-            // merge globals
-            if (newPkg.getGlobals() != null && !newPkg.getGlobals().isEmpty()) {
-                Map<String, String> pkgGlobals = pkg.getGlobals();
-                // Add globals
-                for (final Map.Entry<String, String> entry : newPkg.getGlobals().entrySet()) {
-                    final String identifier = entry.getKey();
-                    final String type = entry.getValue();
-                    lastIdent = identifier;
-                    lastType = type;
-                    if (pkgGlobals.containsKey( identifier ) && !pkgGlobals.get( identifier ).equals( type )) {
-                        throw new RuntimeException(pkg.getName() + " cannot be integrated");
-                    } else {
-                        pkg.addGlobal( identifier,
-                                       this.rootClassLoader.loadClass( type ) );
-                        // this isn't a package merge, it's adding to the rulebase, but I've put it here for convienience
-                        addGlobal(identifier,
-                                  this.rootClassLoader.loadClass(type));
-                    }
+        // merge globals
+        if (newPkg.getGlobals() != null && !newPkg.getGlobals().isEmpty()) {
+            Map<String, Class<?>> pkgGlobals = pkg.getGlobals();
+            // Add globals
+            for (final Map.Entry<String, Class<?>> entry : newPkg.getGlobals().entrySet()) {
+                final String identifier = entry.getKey();
+                final Class<?> type = entry.getValue();
+                if (pkgGlobals.containsKey( identifier ) && !pkgGlobals.get( identifier ).equals( type )) {
+                    throw new RuntimeException(pkg.getName() + " cannot be integrated");
+                } else {
+                    pkg.addGlobal( identifier, type );
+                    // this isn't a package merge, it's adding to the rulebase, but I've put it here for convienience
+                    addGlobal( identifier, type );
                 }
             }
-        } catch (ClassNotFoundException e) {
-            throw new RuntimeException( "Unable to resolve class '" + lastType +
-                                        "' for global '" + lastIdent + "'" );
         }
 
         // merge entry point declarations

@@ -36,7 +36,7 @@ import org.kie.api.definition.process.Process;
 import org.kie.api.definition.type.FactType;
 import org.kie.api.io.Resource;
 import org.kie.api.runtime.rule.AccumulateFunction;
-import org.kie.soup.project.datamodel.commons.types.TypeResolver;
+import org.drools.core.addon.TypeResolver;
 
 public interface InternalKnowledgePackage extends KiePackage,
                                                   Externalizable {
@@ -55,7 +55,7 @@ public interface InternalKnowledgePackage extends KiePackage,
 
     ResourceTypePackageRegistry getResourceTypePackages();
 
-    Map<String, String> getGlobals();
+    Map<String, Class<?>> getGlobals();
 
     @Deprecated
     Map<String, Process> getRuleFlows();

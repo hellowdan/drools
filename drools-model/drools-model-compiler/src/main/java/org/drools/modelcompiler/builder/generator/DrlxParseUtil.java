@@ -80,7 +80,7 @@ import org.drools.mvel.parser.ast.expr.HalfBinaryExpr;
 import org.drools.mvel.parser.ast.expr.MapCreationLiteralExpression;
 import org.drools.mvel.parser.ast.expr.NullSafeFieldAccessExpr;
 import org.drools.mvel.parser.printer.PrintUtil;
-import org.kie.soup.project.datamodel.commons.types.TypeResolver;
+import org.drools.core.addon.TypeResolver;
 
 import static java.util.Optional.of;
 import static java.util.stream.Collectors.toList;
@@ -261,19 +261,6 @@ public class DrlxParseUtil {
     public static boolean canCoerceLiteralNumberExpr(Class<?> type) {
         final List<? extends Class<?>> classes = Arrays.asList(int.class, long.class, double.class);
         return classes.contains(type);
-    }
-
-    public static Expression coerceLiteralNumberExprToType(LiteralStringValueExpr expr, Class<?> type ) {
-        if (type == int.class) {
-            return new IntegerLiteralExpr( expr.getValue() );
-        }
-        if (type == long.class) {
-            return new LongLiteralExpr( expr.getValue().endsWith( "l" ) ? expr.getValue() : expr.getValue() + "l" );
-        }
-        if (type == double.class) {
-            return new DoubleLiteralExpr( expr.getValue().endsWith( "d" ) ? expr.getValue() : expr.getValue() + "d" );
-        }
-        throw new RuntimeException("Unknown literal: " + expr);
     }
 
     public static Class<?> getLiteralExpressionType( LiteralExpr expr ) {

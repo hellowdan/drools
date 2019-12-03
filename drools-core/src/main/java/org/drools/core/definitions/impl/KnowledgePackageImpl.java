@@ -34,11 +34,12 @@ import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicBoolean;
 
+import org.drools.core.addon.ClassTypeResolver;
+import org.drools.core.addon.TypeResolver;
 import org.drools.core.base.ClassFieldAccessorCache;
 import org.drools.core.base.ClassFieldAccessorStore;
 import org.drools.core.common.DroolsObjectInputStream;
 import org.drools.core.common.DroolsObjectOutputStream;
-import org.drools.core.common.ProjectClassLoader;
 import org.drools.core.definitions.InternalKnowledgePackage;
 import org.drools.core.definitions.ProcessPackage;
 import org.drools.core.definitions.ResourceTypePackageRegistry;
@@ -55,6 +56,7 @@ import org.drools.core.rule.TypeDeclaration;
 import org.drools.core.rule.WindowDeclaration;
 import org.drools.core.ruleunit.RuleUnitDescriptionLoader;
 import org.drools.core.util.ClassUtils;
+import org.drools.reflective.classloader.ProjectClassLoader;
 import org.kie.api.definition.process.Process;
 import org.kie.api.definition.rule.Global;
 import org.kie.api.definition.rule.Query;
@@ -63,8 +65,6 @@ import org.kie.api.definition.type.FactType;
 import org.kie.api.io.Resource;
 import org.kie.api.io.ResourceType;
 import org.kie.api.runtime.rule.AccumulateFunction;
-import org.kie.soup.project.datamodel.commons.types.ClassTypeResolver;
-import org.kie.soup.project.datamodel.commons.types.TypeResolver;
 
 public class KnowledgePackageImpl
         implements
@@ -100,7 +100,7 @@ public class KnowledgePackageImpl
 
     private Set<String> staticImports;
 
-    private Map<String, String> globals;
+    private Map<String, Class<?>> globals;
 
     private Map<String, FactTemplate> factTemplates;
 
@@ -222,8 +222,8 @@ public class KnowledgePackageImpl
 
     public Collection<Global> getGlobalVariables() {
         List<Global> list = new ArrayList<>(getGlobals().size());
-        for (Map.Entry<String, String> global : getGlobals().entrySet()) {
-            list.add(new GlobalImpl(global.getKey(), global.getValue()));
+        for (Map.Entry<String, Class<?>> global : getGlobals().entrySet()) {
+            list.add(new GlobalImpl(global.getKey(), global.getValue().getName()));
         }
         return Collections.unmodifiableCollection(list);
     }
@@ -308,7 +308,7 @@ public class KnowledgePackageImpl
         this.functions = (Map<String, Function>) in.readObject();
         this.accumulateFunctions = (Map<String, AccumulateFunction>) in.readObject();
         this.factTemplates = (Map) in.readObject();
-        this.globals = (Map<String, String>) in.readObject();
+        this.globals = (Map<String, Class<?>>) in.readObject();
         this.valid = in.readBoolean();
         this.needStreamMode = in.readBoolean();
         this.rules = (Map<String, RuleImpl>) in.readObject();
@@ -442,15 +442,14 @@ public class KnowledgePackageImpl
         if (this.globals == Collections.EMPTY_MAP) {
             this.globals = new HashMap<>(1);
         }
-        this.globals.put(identifier,
-                         clazz.getName());
+        this.globals.put(identifier, clazz);
     }
 
     public void removeGlobal(final String identifier) {
         this.globals.remove(identifier);
     }
 
-    public Map<String, String> getGlobals() {
+    public Map<String, Class<?>> getGlobals() {
         return this.globals;
     }
 
@@ -658,7 +657,7 @@ public class KnowledgePackageImpl
         for (String implicitImport : implicitImports) {
             typeResolver.addImplicitImport(implicitImport);
         }
-        this.ruleUnitDescriptionLoader = new RuleUnitDescriptionLoader(typeResolver);
+        this.ruleUnitDescriptionLoader = new RuleUnitDescriptionLoader(this);
     }
 
     public RuleUnitDescriptionLoader getRuleUnitDescriptionLoader() {

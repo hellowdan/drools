@@ -111,7 +111,6 @@ import org.drools.compiler.rule.builder.dialect.DialectError;
 import org.drools.compiler.runtime.pipeline.impl.DroolsJaxbHelperProviderImpl;
 import org.drools.core.base.ClassFieldAccessorCache;
 import org.drools.core.builder.conf.impl.JaxbConfigurationImpl;
-import org.drools.core.common.ProjectClassLoader;
 import org.drools.core.definitions.InternalKnowledgePackage;
 import org.drools.core.definitions.impl.KnowledgePackageImpl;
 import org.drools.core.definitions.rule.impl.RuleImpl;
@@ -132,6 +131,7 @@ import org.drools.core.util.DroolsStreamUtils;
 import org.drools.core.util.IoUtils;
 import org.drools.core.util.StringUtils;
 import org.drools.core.xml.XmlChangeSetReader;
+import org.drools.reflective.classloader.ProjectClassLoader;
 import org.kie.api.KieBase;
 import org.kie.api.KieBaseConfiguration;
 import org.kie.api.builder.ReleaseId;
@@ -159,7 +159,7 @@ import org.kie.internal.builder.ResultSeverity;
 import org.kie.internal.builder.ScoreCardConfiguration;
 import org.kie.internal.io.ResourceFactory;
 import org.kie.internal.io.ResourceWithConfigurationImpl;
-import org.kie.soup.project.datamodel.commons.types.TypeResolver;
+import org.drools.core.addon.TypeResolver;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.xml.sax.SAXException;
@@ -1517,29 +1517,21 @@ public class KnowledgeBuilderImpl implements KnowledgeBuilder,
         final Map<String, ImportDeclaration> imports = pkg.getImports();
         imports.putAll(newPkg.getImports());
 
-        String lastType = null;
-        try {
-            // merge globals
-            if (newPkg.getGlobals() != null && !newPkg.getGlobals().isEmpty()) {
-                Map<String, String> pkgGlobals = pkg.getGlobals();
-                // Add globals
-                for (final Map.Entry<String, String> entry : newPkg.getGlobals().entrySet()) {
-                    final String identifier = entry.getKey();
-                    final String type = entry.getValue();
-                    lastType = type;
-                    if (pkgGlobals.containsKey(identifier) && !pkgGlobals.get(identifier).equals(type)) {
-                        throw new RuntimeException(pkg.getName() + " cannot be integrated");
-                    } else {
-                        pkg.addGlobal(identifier,
-                                      this.rootClassLoader.loadClass(type));
-                        // this isn't a package merge, it's adding to the rulebase, but I've put it here for convenience
-                        this.globals.put(identifier,
-                                         this.rootClassLoader.loadClass(type));
-                    }
+        // merge globals
+        if (newPkg.getGlobals() != null && !newPkg.getGlobals().isEmpty()) {
+            Map<String, Class<?>> pkgGlobals = pkg.getGlobals();
+            // Add globals
+            for (final Map.Entry<String, Class<?>> entry : newPkg.getGlobals().entrySet()) {
+                final String identifier = entry.getKey();
+                final Class<?> type = entry.getValue();
+                if (pkgGlobals.containsKey(identifier) && !pkgGlobals.get(identifier).equals(type)) {
+                    throw new RuntimeException(pkg.getName() + " cannot be integrated");
+                } else {
+                    pkg.addGlobal(identifier, type);
+                    // this isn't a package merge, it's adding to the rulebase, but I've put it here for convenience
+                    this.globals.put(identifier, type );
                 }
             }
-        } catch (ClassNotFoundException e) {
-            throw new RuntimeException("Unable to resolve class '" + lastType + "'");
         }
 
         // merge the type declarations
@@ -1824,7 +1816,7 @@ public class KnowledgeBuilderImpl implements KnowledgeBuilder,
         Dialect dialect = pkgRegistry.getDialectCompiletimeRegistry().getDialect(functionDescr.getDialect());
         dialect.postCompileAddFunction(functionDescr, pkgRegistry.getTypeResolver());
 
-        if (rootClassLoader instanceof ProjectClassLoader) {
+        if (rootClassLoader instanceof ProjectClassLoader ) {
             String functionClassName = functionDescr.getClassName();
             JavaDialectRuntimeData runtime = ((JavaDialectRuntimeData) pkgRegistry.getDialectRuntimeRegistry().getDialectData("java"));
             try {
