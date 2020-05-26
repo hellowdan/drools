@@ -243,12 +243,13 @@ public class DMNEvaluatorCompiler {
             }
             if( binding.getExpression() == null ) {
                 MsgUtil.reportMessage( logger,
-                                       DMNMessage.Severity.ERROR,
+                                       DMNMessage.Severity.WARN,
                                        binding,
                                        model,
                                        null,
                                        null,
-                                       Msg.MISSING_PARAMETER_FOR_INVOCATION,
+                                       Msg.MISSING_EXPRESSION_FOR_PARAM_OF_INVOCATION,
+                                       binding.getParameter().getIdentifierString(),
                                        node.getIdentifierString() );
                 return null;
             }
@@ -366,7 +367,7 @@ public class DMNEvaluatorCompiler {
                                    Msg.FUNC_DEF_INVALID_KIND,
                                   kind,
                                    node.getIdentifierString() );
-            return new DMNFunctionDefinitionEvaluator( node.getName(), funcDef );
+            return new DMNFunctionDefinitionEvaluator(node, funcDef);
         } else if (kind.equals(FunctionKind.FEEL)) {
             return compileFunctionDefinitionFEEL(ctx, model, node, functionName, funcDef);
         } else if (kind.equals(FunctionKind.JAVA)) {
@@ -384,13 +385,13 @@ public class DMNEvaluatorCompiler {
                                   kind,
                                    node.getIdentifierString() );
         }
-        return new DMNFunctionDefinitionEvaluator( node.getName(), funcDef );
+        return new DMNFunctionDefinitionEvaluator(node, funcDef);
     }
 
     private DMNExpressionEvaluator compileFunctionDefinitionFEEL(DMNCompilerContext ctx, DMNModelImpl model, DMNBaseNode node, String functionName, FunctionDefinition funcDef) {
         ctx.enterFrame();
         try {
-            DMNFunctionDefinitionEvaluator func = new DMNFunctionDefinitionEvaluator(node.getName(), funcDef);
+            DMNFunctionDefinitionEvaluator func = new DMNFunctionDefinitionEvaluator(node, funcDef);
             for (InformationItem p : funcDef.getFormalParameter()) {
                 DMNCompilerHelper.checkVariableName(model, p, p.getName());
                 DMNType dmnType = compiler.resolveTypeRef(model, p, p, p.getTypeRef());
@@ -399,23 +400,8 @@ public class DMNEvaluatorCompiler {
             }
 
             DMNExpressionEvaluator eval = compileExpression(ctx, model, node, functionName, funcDef.getExpression());
-            if (eval instanceof DMNLiteralExpressionEvaluator && ((DMNLiteralExpressionEvaluator) eval).isFunctionDefinition()) {
-                // we need to resolve the function and eliminate the indirection
-                CompiledExpression fexpr = ((DMNLiteralExpressionEvaluator) eval).getExpression();
-                FEELFunction feelFunction = ctx.getFeelHelper().evaluateFunctionDef(ctx, fexpr, model, funcDef,
-                                                                                    Msg.FUNC_DEF_COMPILATION_ERR,
-                                                                                    functionName,
-                                                                                    node.getIdentifierString());
-                DMNInvocationEvaluator invoker = new DMNInvocationEvaluator(node.getName(), node.getSource(), functionName, null,
-                                                                            (fctx, fname) -> feelFunction, null); // feel can be null as anyway is hardcoded to `feelFunction`
-
-                for (InformationItem p : funcDef.getFormalParameter()) {
-                    invoker.addParameter(p.getName(), func.getParameterType(p.getName()), (em, dr) -> new EvaluatorResultImpl(dr.getContext().get(p.getName()), EvaluatorResult.ResultType.SUCCESS));
-                }
-                eval = invoker;
-            }
-
             func.setEvaluator(eval);
+
             return func;
         } finally {
             ctx.exitFrame();
@@ -453,7 +439,7 @@ public class DMNEvaluatorCompiler {
                     DMNInvocationEvaluator invoker = new DMNInvocationEvaluator(node.getName(), node.getSource(), functionName, null,
                                                                                 (fctx, fname) -> feelFunction, null); // feel can be null as anyway is hardcoded to `feelFunction`
 
-                    DMNFunctionDefinitionEvaluator func = new DMNFunctionDefinitionEvaluator( node.getName(), funcDef );
+                    DMNFunctionDefinitionEvaluator func = new DMNFunctionDefinitionEvaluator(node, funcDef);
                     for ( InformationItem p : funcDef.getFormalParameter() ) {
                         DMNCompilerHelper.checkVariableName( model, p, p.getName() );
                         DMNType dmnType = compiler.resolveTypeRef(model, p, p, p.getTypeRef());
@@ -496,7 +482,7 @@ public class DMNEvaluatorCompiler {
                                    Msg.FUNC_DEF_BODY_NOT_CONTEXT,
                                    node.getIdentifierString() );
         }
-        return new DMNFunctionDefinitionEvaluator(node.getName(), funcDef);
+        return new DMNFunctionDefinitionEvaluator(node, funcDef);
     }
 
     private DMNExpressionEvaluator compileFunctionDefinitionPMML(DMNCompilerContext ctx, DMNModelImpl model, DMNBaseNode node, String functionName, FunctionDefinition funcDef) {
@@ -550,7 +536,7 @@ public class DMNEvaluatorCompiler {
                                                                                                      pmmlResource,
                                                                                                      pmmlModel,
                                                                                                      pmmlInfo);
-                DMNFunctionDefinitionEvaluator func = new DMNFunctionDefinitionEvaluator(node.getName(), funcDef);
+                DMNFunctionDefinitionEvaluator func = new DMNFunctionDefinitionEvaluator(node, funcDef);
                 for (InformationItem p : funcDef.getFormalParameter()) {
                     DMNCompilerHelper.checkVariableName(model, p, p.getName());
                     DMNType dmnType = compiler.resolveTypeRef(model, p, p, p.getTypeRef());
@@ -581,7 +567,7 @@ public class DMNEvaluatorCompiler {
                                   Msg.FUNC_DEF_BODY_NOT_CONTEXT,
                                   node.getIdentifierString());
         }
-        return new DMNFunctionDefinitionEvaluator(node.getName(), funcDef);
+        return new DMNFunctionDefinitionEvaluator(node, funcDef);
     }
 
     private String stripQuotes(String trim) {
@@ -636,7 +622,7 @@ public class DMNEvaluatorCompiler {
             }
             String id = oc.getId();
             String outputValuesText = Optional.ofNullable( oc.getOutputValues() ).map( UnaryTests::getText ).orElse( null );
-            String defaultValue = oc.getDefaultOutputEntry() != null ? oc.getDefaultOutputEntry().getText() : null;
+            String defaultValue = Optional.ofNullable(oc.getDefaultOutputEntry()).map(LiteralExpression::getText).filter(t -> !t.isEmpty()).orElse(null);
             BaseDMNTypeImpl typeRef = inferTypeRef( model, dt, oc );
             java.util.List<UnaryTest> outputValues = null;
 
@@ -666,7 +652,7 @@ public class DMNEvaluatorCompiler {
             null,
             null,
             Msg.MISSING_OUTPUT_VALUES,
-            dt.getParent() );
+            dtName );
         }
         java.util.List<DTDecisionRule> rules = new ArrayList<>();
         index = 0;
@@ -866,14 +852,14 @@ public class DMNEvaluatorCompiler {
      * Utility method to have a error message is reported if a DMN Variable is missing typeRef.
      * @param model used for reporting errors
      * @param variable the variable to extract typeRef
-     * @return the `variable.typeRef` or null in case of errors. Errors are reported with standard notification mechanism via MsgUtil.reportMessage
+     * @return the `variable.typeRef` or null if missing. When missing a WARN is reported with standard notification mechanism via MsgUtil.reportMessage
      */
     private static QName variableTypeRefOrErrIfNull(DMNModelImpl model, InformationItem variable) {
         if ( variable.getTypeRef() != null ) {
             return variable.getTypeRef();
         } else {
             MsgUtil.reportMessage( logger,
-                    DMNMessage.Severity.ERROR,
+                    DMNMessage.Severity.WARN,
                     variable,
                     model,
                     null,
@@ -899,7 +885,7 @@ public class DMNEvaluatorCompiler {
                                                                                         exprText,
                                                                                         exprName,
                                                                                         node.getIdentifierString() );
-                    evaluator = new DMNLiteralExpressionEvaluator( compiledExpression );
+                    evaluator = new DMNLiteralExpressionEvaluator(compiledExpression, expression);
                 } catch ( Throwable e ) {
                     MsgUtil.reportMessage( logger,
                                            DMNMessage.Severity.ERROR,

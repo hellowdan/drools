@@ -42,7 +42,6 @@ import org.kie.dmn.api.core.DMNMessage;
 import org.kie.dmn.api.core.DMNModel;
 import org.kie.dmn.api.marshalling.DMNMarshaller;
 import org.kie.dmn.core.api.DMNFactory;
-import org.kie.dmn.core.compiler.CoerceDecisionServiceSingletonOutputOption;
 import org.kie.dmn.core.compiler.DMNCompilerConfigurationImpl;
 import org.kie.dmn.core.compiler.DMNCompilerImpl;
 import org.kie.dmn.core.compiler.DMNProfile;
@@ -94,8 +93,7 @@ public class DMNAssemblerService implements KieAssemblerService {
         List<DMNResource> dmnResources = new ArrayList<>();
         for (ResourceWithConfiguration r : resources) {
             Definitions definitions = dmnMarshaller.unmarshal(r.getResource().getReader());
-            QName modelID = new QName(definitions.getNamespace(), definitions.getName());
-            DMNResource dmnResource = new DMNResource(modelID, r, definitions);
+            DMNResource dmnResource = new DMNResource(definitions, r);
             dmnResources.add(dmnResource);
         }
 
@@ -123,7 +121,7 @@ public class DMNAssemblerService implements KieAssemblerService {
         List<DMNResource> sortedDmnResources = DMNResourceDependenciesSorter.sort(dmnResources);
 
         for (DMNResource dmnRes : sortedDmnResources) {
-            DMNModel dmnModel = internalAddResource(kbuilderImpl, dmnCompiler, dmnRes.getResAndConfig(), dmnModels);
+            DMNModel dmnModel = internalAddResource(kbuilderImpl, dmnCompiler, dmnRes, dmnModels);
             dmnModels.add(dmnModel);
         }
     }
@@ -145,9 +143,10 @@ public class DMNAssemblerService implements KieAssemblerService {
         }
     }
 
-    private DMNModel internalAddResource(KnowledgeBuilderImpl kbuilder, DMNCompiler dmnCompiler, ResourceWithConfiguration r, Collection<DMNModel> dmnModels) throws Exception {
+    private DMNModel internalAddResource(KnowledgeBuilderImpl kbuilder, DMNCompiler dmnCompiler, DMNResource dmnRes, Collection<DMNModel> dmnModels) throws Exception {
+        ResourceWithConfiguration r = dmnRes.getResAndConfig();
         r.getBeforeAdd().accept(kbuilder);
-        DMNModel dmnModel = compileResourceToModel(kbuilder, dmnCompiler, r.getResource(), dmnModels);
+        DMNModel dmnModel = compileResourceToModel(kbuilder, dmnCompiler, r.getResource(), dmnRes, dmnModels);
         r.getAfterAdd().accept(kbuilder);
         return dmnModel;
     }
@@ -167,11 +166,13 @@ public class DMNAssemblerService implements KieAssemblerService {
             }
         }
 
-        compileResourceToModel(kbuilderImpl, dmnCompiler, resource, dmnModels);
+        compileResourceToModel(kbuilderImpl, dmnCompiler, resource, null, dmnModels);
     }
 
-    private DMNModel compileResourceToModel(KnowledgeBuilderImpl kbuilderImpl, DMNCompiler dmnCompiler, Resource resource, Collection<DMNModel> dmnModels) {
-        DMNModel model = dmnCompiler.compile(resource, dmnModels);
+    private DMNModel compileResourceToModel(KnowledgeBuilderImpl kbuilderImpl, DMNCompiler dmnCompiler, Resource resource, DMNResource dmnRes, Collection<DMNModel> dmnModels) {
+        DMNModel model = dmnRes != null ?
+                dmnCompiler.compile(dmnRes.getDefinitions(), resource, dmnModels) :
+                dmnCompiler.compile(resource, dmnModels);
         if( model != null ) {
             String namespace = model.getNamespace();
 
@@ -193,7 +194,7 @@ public class DMNAssemblerService implements KieAssemblerService {
             dmnpkg.addProfiles(kbuilderImpl.getCachedOrCreate(DMN_PROFILES_CACHE_KEY, () -> getDMNProfiles(kbuilderImpl)));
         } else {
             kbuilderImpl.addBuilderResult(new DMNKnowledgeBuilderError(ResultSeverity.ERROR, resource, "Unable to compile DMN model for the resource"));
-            logger.error( "Unable to compile DMN model for resource {}", resource.getSourcePath() );
+            logger.error("Unable to compile DMN model for the resource {}", resource.getSourcePath());
         }
         return model;
     }
@@ -250,7 +251,6 @@ public class DMNAssemblerService implements KieAssemblerService {
 
         if (isStrictMode(kbuilderImpl.getBuilderConfiguration().getChainedProperties())) {
             compilerConfiguration.setProperty(RuntimeTypeCheckOption.PROPERTY_NAME, "true");
-            compilerConfiguration.setProperty(CoerceDecisionServiceSingletonOutputOption.PROPERTY_NAME, "false");
         }
 
         return DMNFactory.newCompiler(compilerConfiguration);

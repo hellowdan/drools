@@ -10,7 +10,6 @@ grammar FEEL_1_1;
 
 @parser::header {
     import org.kie.dmn.feel.parser.feel11.ParserHelper;
-    import org.kie.dmn.feel.parser.feel11.Keywords;
 }
 
 @parser::members {
@@ -22,10 +21,6 @@ grammar FEEL_1_1;
 
     public ParserHelper getHelper() {
         return helper;
-    }
-
-    private boolean isKeyword( Keywords k ) {
-        return k.symbol.equals( _input.LT(1).getText() );
     }
 
     private String getOriginalText( ParserRuleContext ctx ) {
@@ -114,7 +109,17 @@ quantifiedExpression
 
 // #54
 type
-    : ( FUNCTION | qualifiedName )
+@init {
+    helper.pushTypeScope();
+}
+@after {
+    helper.popScope();
+}
+    : sk=Identifier {$sk.getText().equals("list");} LT type GT                                                        #listType
+    | sk=Identifier {$sk.getText().equals("context");} LT Identifier COLON type ( COMMA Identifier COLON type )* GT   #contextType
+    | FUNCTION                                                                                                        #qnType
+    | FUNCTION LT type ( COMMA type )* GT RARROW type                                                                 #functionType
+    | qualifiedName                                                                                                   #qnType
     ;
 
 // #56
@@ -269,6 +274,7 @@ unaryExpression
 	:	SUB unaryExpression                      #signedUnaryExpressionMinus
 	|   unaryExpressionNotPlusMinus              #nonSignedUnaryExpression
     |	ADD unaryExpressionNotPlusMinus          #signedUnaryExpressionPlus
+    | unaryExpression parameters #fnInvocation
 	;
 
 unaryExpressionNotPlusMinus
@@ -285,7 +291,7 @@ primary
     | context                     #primaryContext
     | LPAREN expression RPAREN          #primaryParens
     | simplePositiveUnaryTest     #primaryUnaryTest
-    | qualifiedName parameters?   #primaryName
+    | qualifiedName    #primaryName
     ;
 
 // #33 - #39
@@ -293,8 +299,17 @@ literal
     :	IntegerLiteral          #numberLiteral
     |	FloatingPointLiteral    #numberLiteral
     |	BooleanLiteral          #boolLiteral
+    |   atLiteral               #atLiteralLabel
     |	StringLiteral           #stringLiteral
     |	NULL                #nullLiteral
+    ;
+    
+atLiteral
+    : AT atLiteralValue
+    ;
+    
+atLiteralValue 
+    : StringLiteral 
     ;
 
 BooleanLiteral
@@ -308,10 +323,10 @@ BooleanLiteral
 
 // #7
 simplePositiveUnaryTest
-    : op=LT  {helper.enableDynamicResolution();}  endpoint {helper.disableDynamicResolution();}   #positiveUnaryTestIneq
-    | op=GT  {helper.enableDynamicResolution();}  endpoint {helper.disableDynamicResolution();}   #positiveUnaryTestIneq
-    | op=LE {helper.enableDynamicResolution();}  endpoint {helper.disableDynamicResolution();}   #positiveUnaryTestIneq
-    | op=GE {helper.enableDynamicResolution();}  endpoint {helper.disableDynamicResolution();}   #positiveUnaryTestIneq
+    : op=LT  {helper.enableDynamicResolution();}  endpoint {helper.disableDynamicResolution();}   #positiveUnaryTestIneqInterval
+    | op=GT  {helper.enableDynamicResolution();}  endpoint {helper.disableDynamicResolution();}   #positiveUnaryTestIneqInterval
+    | op=LE {helper.enableDynamicResolution();}  endpoint {helper.disableDynamicResolution();}   #positiveUnaryTestIneqInterval
+    | op=GE {helper.enableDynamicResolution();}  endpoint {helper.disableDynamicResolution();}   #positiveUnaryTestIneqInterval
     | op=EQUAL  {helper.enableDynamicResolution();}  endpoint {helper.disableDynamicResolution();}   #positiveUnaryTestIneq
     | op=NOTEQUAL {helper.enableDynamicResolution();}  endpoint {helper.disableDynamicResolution();}   #positiveUnaryTestIneq
     | interval           #positiveUnaryTestInterval
@@ -697,7 +712,8 @@ ZeroToThree
 // This is not in the spec but prevents having to preprocess the input
 fragment
 UnicodeEscape
-    :   '\\' 'u' HexDigit HexDigit HexDigit HexDigit
+    :   '\\' 'U' HexDigit HexDigit HexDigit HexDigit HexDigit HexDigit
+    |   '\\' 'u' HexDigit HexDigit HexDigit HexDigit
     ;
 
 // The Null Literal
@@ -725,6 +741,8 @@ NOTEQUAL : '!=';
 
 COLON : ':';
 
+RARROW : '->';
+
 POW : '**';
 ADD : '+';
 SUB : '-';
@@ -738,6 +756,7 @@ NOT
     : 'not'
     ;
 
+AT  : '@';
 
 Identifier
     : NameStartChar NameStartCharOrPart*

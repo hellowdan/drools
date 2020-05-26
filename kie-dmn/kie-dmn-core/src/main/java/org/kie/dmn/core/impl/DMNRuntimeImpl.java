@@ -16,11 +16,9 @@
 
 package org.kie.dmn.core.impl;
 
-import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
 import java.util.Map;
-import java.util.Map.Entry;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
@@ -29,18 +27,11 @@ import java.util.stream.Collectors;
 
 import javax.xml.namespace.QName;
 
-import org.drools.compiler.kie.builder.impl.KieContainerImpl;
-import org.drools.compiler.kproject.models.KieBaseModelImpl;
-import org.drools.core.definitions.InternalKnowledgePackage;
-import org.drools.core.definitions.ResourceTypePackageRegistry;
 import org.drools.core.impl.InternalKnowledgeBase;
-import org.drools.core.impl.KnowledgeBaseImpl;
-import org.kie.api.io.ResourceType;
 import org.kie.dmn.api.core.DMNContext;
 import org.kie.dmn.api.core.DMNDecisionResult;
 import org.kie.dmn.api.core.DMNMessage;
 import org.kie.dmn.api.core.DMNModel;
-import org.kie.dmn.api.core.DMNPackage;
 import org.kie.dmn.api.core.DMNResult;
 import org.kie.dmn.api.core.DMNRuntime;
 import org.kie.dmn.api.core.DMNType;
@@ -53,7 +44,6 @@ import org.kie.dmn.api.core.event.BeforeEvaluateDecisionEvent;
 import org.kie.dmn.api.core.event.DMNRuntimeEventListener;
 import org.kie.dmn.core.api.DMNFactory;
 import org.kie.dmn.core.api.EvaluatorResult;
-import org.kie.dmn.core.assembler.DMNAssemblerService;
 import org.kie.dmn.core.ast.BusinessKnowledgeModelNodeImpl;
 import org.kie.dmn.core.ast.DMNBaseNode;
 import org.kie.dmn.core.ast.DMNDecisionServiceEvaluator;
@@ -67,7 +57,6 @@ import org.kie.dmn.core.compiler.RuntimeTypeCheckOption;
 import org.kie.dmn.core.util.Msg;
 import org.kie.dmn.core.util.MsgUtil;
 import org.kie.dmn.feel.runtime.FEELFunction;
-import org.kie.dmn.feel.util.ClassLoaderUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -80,75 +69,35 @@ public class DMNRuntimeImpl
     private static final Logger logger = LoggerFactory.getLogger( DMNRuntimeImpl.class );
 
     private DMNRuntimeEventManagerImpl         eventManager;
-    private final InternalKnowledgeBase        knowledgeBase;
+    private final DMNRuntimeKB runtimeKB;
 
     private boolean overrideRuntimeTypeCheck = false;
 
-    public DMNRuntimeImpl(InternalKnowledgeBase knowledgeBase) {
-        this.knowledgeBase = knowledgeBase;
+    public DMNRuntimeImpl(DMNRuntimeKB runtimeKB) {
+        this.runtimeKB = runtimeKB != null ? runtimeKB : new VoidDMNRuntimeKB();
         this.eventManager = new DMNRuntimeEventManagerImpl();
-        if (knowledgeBase != null && knowledgeBase instanceof KnowledgeBaseImpl) {
-            KnowledgeBaseImpl knowledgeBaseImpl = (KnowledgeBaseImpl) knowledgeBase;
-            KieContainerImpl kieContainer = (KieContainerImpl) knowledgeBaseImpl.getKieContainer();
-            if (kieContainer != null) {
-                KieBaseModelImpl kieBaseModel = (KieBaseModelImpl) kieContainer.getKieProject().getKieBaseModel(knowledgeBase.getId());
-                for (Entry<String, String> kv : kieBaseModel.getKModule().getConfigurationProperties().entrySet()) {
-                    String k = kv.getKey();
-                    if (k != null && k.startsWith(DMNAssemblerService.DMN_RUNTIME_LISTENER_PREFIX)) {
-                        if (ClassLoaderUtil.CAN_PLATFORM_CLASSLOAD) {
-                            try {
-                                DMNRuntimeEventListener runtimeListenerInstance = (DMNRuntimeEventListener) knowledgeBase.getRootClassLoader().loadClass(kv.getValue()).newInstance();
-                                this.addListener(runtimeListenerInstance);
-                            } catch (Exception e) {
-                                logger.error("Cannot perform classloading of runtime listener: {}", kv, e);
-                            }
-                        } else {
-                            logger.error("This platform does not support classloading of runtime listener: {}", kv);
-                        }
-                    }
-                }
-            }
-        } else {
-            logger.warn("DMNRuntime created without a reference to KnowledgeBase");
+        for (DMNRuntimeEventListener listener : this.runtimeKB.getListeners()) {
+            this.addListener(listener);
         }
     }
 
     @Override
     public List<DMNModel> getModels() {
-        List<DMNModel> models = new ArrayList<>(  );
-        knowledgeBase.getKiePackages().forEach( kpkg -> {
-            DMNPackage dmnPkg = (DMNPackage) ((InternalKnowledgePackage) kpkg).getResourceTypePackages().get( ResourceType.DMN );
-            if( dmnPkg != null ) {
-                dmnPkg.getAllModels().values().forEach( model -> models.add( model ) );
-            }
-        } );
-        return models;
+        return runtimeKB.getModels();
     }
 
     @Override
     public DMNModel getModel(String namespace, String modelName) {
         Objects.requireNonNull(namespace, () -> MsgUtil.createMessage(Msg.PARAM_CANNOT_BE_NULL, "namespace"));
         Objects.requireNonNull(modelName, () -> MsgUtil.createMessage(Msg.PARAM_CANNOT_BE_NULL, "modelName"));
-        InternalKnowledgePackage kpkg = (InternalKnowledgePackage) knowledgeBase.getKiePackage( namespace );
-        if( kpkg == null ) {
-            return null;
-        }
-        ResourceTypePackageRegistry map = kpkg.getResourceTypePackages();
-        DMNPackage dmnpkg = (DMNPackage) map.get( ResourceType.DMN );
-        return dmnpkg != null ? dmnpkg.getModel( modelName ) : null;
+        return runtimeKB.getModel(namespace, modelName);
     }
 
     @Override
     public DMNModel getModelById(String namespace, String modelId) {
         Objects.requireNonNull(namespace, () -> MsgUtil.createMessage(Msg.PARAM_CANNOT_BE_NULL, "namespace"));
         Objects.requireNonNull(modelId, () -> MsgUtil.createMessage(Msg.PARAM_CANNOT_BE_NULL, "modelId"));
-        InternalKnowledgePackage kpkg = (InternalKnowledgePackage) knowledgeBase.getKiePackage( namespace );
-        if( kpkg == null ) {
-            return null;
-        }
-        ResourceTypePackageRegistry map = kpkg.getResourceTypePackages();
-        DMNPackage dmnpkg = (DMNPackage) map.get( ResourceType.DMN );
-        return dmnpkg != null ? dmnpkg.getModelById( modelId ) : null;
+        return runtimeKB.getModelById(namespace, modelId);
     }
 
     @Override
@@ -157,11 +106,13 @@ public class DMNRuntimeImpl
         Objects.requireNonNull(context, () -> MsgUtil.createMessage(Msg.PARAM_CANNOT_BE_NULL, "context"));
         boolean performRuntimeTypeCheck = performRuntimeTypeCheck(model);
         DMNResultImpl result = createResult( model, context );
+        DMNRuntimeEventManagerUtils.fireBeforeEvaluateAll( eventManager, model, result );
         // the engine should evaluate all Decisions belonging to the "local" model namespace, not imported decision explicitly.
         Set<DecisionNode> decisions = model.getDecisions().stream().filter(d -> d.getModelNamespace().equals(model.getNamespace())).collect(Collectors.toSet());
         for( DecisionNode decision : decisions ) {
             evaluateDecision(context, result, decision, performRuntimeTypeCheck);
         }
+        DMNRuntimeEventManagerUtils.fireAfterEvaluateAll( eventManager, model, result );
         return result;
     }
 
@@ -188,6 +139,9 @@ public class DMNRuntimeImpl
         Objects.requireNonNull(model, () -> MsgUtil.createMessage(Msg.PARAM_CANNOT_BE_NULL, "model"));
         Objects.requireNonNull(context, () -> MsgUtil.createMessage(Msg.PARAM_CANNOT_BE_NULL, "context"));
         Objects.requireNonNull(decisionNames, () -> MsgUtil.createMessage(Msg.PARAM_CANNOT_BE_NULL, "decisionNames"));
+        if (decisionNames.length == 0) {
+            throw new IllegalArgumentException(MsgUtil.createMessage(Msg.PARAM_CANNOT_BE_EMPTY, "decisionNames"));
+        }
         final DMNResultImpl result = createResult( model, context );
         for (String name : decisionNames) {
             evaluateByNameInternal( model, context, result, name );
@@ -199,7 +153,11 @@ public class DMNRuntimeImpl
         boolean performRuntimeTypeCheck = performRuntimeTypeCheck(model);
         Optional<DecisionNode> decision = Optional.ofNullable(model.getDecisionByName(name));
         if (decision.isPresent()) {
+            final boolean walkingIntoScope = walkIntoImportScopeInternalDecisionInvocation(result, model, decision.get());
             evaluateDecision(context, result, decision.get(), performRuntimeTypeCheck);
+            if (walkingIntoScope) {
+                result.getContext().popScope();
+            }
         } else {
             MsgUtil.reportMessage( logger,
                                    DMNMessage.Severity.ERROR,
@@ -217,6 +175,9 @@ public class DMNRuntimeImpl
         Objects.requireNonNull(model, () -> MsgUtil.createMessage(Msg.PARAM_CANNOT_BE_NULL, "model"));
         Objects.requireNonNull(context, () -> MsgUtil.createMessage(Msg.PARAM_CANNOT_BE_NULL, "context"));
         Objects.requireNonNull(decisionIds, () -> MsgUtil.createMessage(Msg.PARAM_CANNOT_BE_NULL, "decisionIds"));
+        if (decisionIds.length == 0) {
+            throw new IllegalArgumentException(MsgUtil.createMessage(Msg.PARAM_CANNOT_BE_EMPTY, "decisionIds"));
+        }
         final DMNResultImpl result = createResult( model, context );
         for ( String id : decisionIds ) {
             evaluateByIdInternal( model, context, result, id );
@@ -228,7 +189,11 @@ public class DMNRuntimeImpl
         boolean performRuntimeTypeCheck = performRuntimeTypeCheck(model);
         Optional<DecisionNode> decision = Optional.ofNullable(model.getDecisionById(id));
         if (decision.isPresent()) {
+            final boolean walkingIntoScope = walkIntoImportScopeInternalDecisionInvocation(result, model, decision.get());
             evaluateDecision(context, result, decision.get(), performRuntimeTypeCheck);
+            if (walkingIntoScope) {
+                result.getContext().popScope();
+            }
         } else {
             MsgUtil.reportMessage( logger,
                                    DMNMessage.Severity.ERROR,
@@ -313,6 +278,7 @@ public class DMNRuntimeImpl
                     }
                     Object c = coerceUsingType(originalValue,
                                                depType,
+                                               typeCheck,
                                                (r, t) -> MsgUtil.reportMessage(logger,
                                                                                DMNMessage.Severity.WARN,
                                                                                decisionService.getDecisionService(),
@@ -460,11 +426,14 @@ public class DMNRuntimeImpl
         }
     }
 
-    public static Object coerceUsingType(Object value, DMNType type, BiConsumer<Object, DMNType> nullCallback) {
+    public static Object coerceUsingType(Object value, DMNType type, boolean typeCheck, BiConsumer<Object, DMNType> nullCallback) {
         Object result = value;
         if (!type.isCollection() && value instanceof Collection && ((Collection<?>) value).size() == 1) {
             // as per Decision evaluation result.
             result = ((Collection<?>) value).toArray()[0];
+        }
+        if (!typeCheck) {
+            return result;
         }
         if (type.isAssignableValue(result)) {
             return result;
@@ -487,6 +456,30 @@ public class DMNRuntimeImpl
                 }
             }
             return false;
+        }
+    }
+
+    private boolean walkIntoImportScopeInternalDecisionInvocation(DMNResultImpl result, DMNModel dmnModel, DMNNode destinationNode) {
+        if (destinationNode.getModelNamespace().equals(dmnModel.getNamespace())) {
+            return false;
+        } else {
+            DMNModelImpl model = (DMNModelImpl) dmnModel;
+            Optional<String> importAlias = model.getImportAliasFor(destinationNode.getModelNamespace(), destinationNode.getModelName());
+            if (importAlias.isPresent()) {
+                result.getContext().pushScope(importAlias.get(), destinationNode.getModelNamespace());
+                return true;
+            } else {
+                MsgUtil.reportMessage(logger,
+                                      DMNMessage.Severity.ERROR,
+                                      dmnModel.getDefinitions(),
+                                      result,
+                                      null,
+                                      null,
+                                      Msg.IMPORT_NOT_FOUND_FOR_NODE_MISSING_ALIAS,
+                                      new QName(destinationNode.getModelNamespace(), destinationNode.getModelName()),
+                                      dmnModel.getName());
+                return false;
+            }
         }
     }
 
@@ -774,23 +767,15 @@ public class DMNRuntimeImpl
     }
 
     public List<DMNProfile> getProfiles() {
-        // need list to preserve ordering
-        List<DMNProfile> profiles = new ArrayList<>();
-        knowledgeBase.getKiePackages().forEach(kpkg -> {
-            DMNPackageImpl dmnPkg = (DMNPackageImpl) ((InternalKnowledgePackage) kpkg).getResourceTypePackages().get(ResourceType.DMN);
-            if (dmnPkg != null) {
-                for (DMNProfile p : dmnPkg.getProfiles()) {
-                    if (!profiles.contains(p)) {
-                        profiles.add(p);
-                    }
-                }
-            }
-        });
-        return profiles;
+        return runtimeKB.getProfiles();
     }
 
     @Override
     public ClassLoader getRootClassLoader() {
-        return knowledgeBase.getRootClassLoader();
+        return runtimeKB.getRootClassLoader();
+    }
+
+    public InternalKnowledgeBase getInternalKnowledgeBase() {
+        return runtimeKB.getInternalKnowledgeBase();
     }
 }

@@ -1,3 +1,20 @@
+/*
+ * Copyright 2019 Red Hat, Inc. and/or its affiliates.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ *
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
 package org.drools.modelcompiler.builder.generator;
 
 import java.lang.reflect.Method;
@@ -18,7 +35,6 @@ import java.util.function.Predicate;
 import com.github.javaparser.ast.expr.Expression;
 import com.github.javaparser.ast.expr.MethodCallExpr;
 import com.github.javaparser.ast.expr.NameExpr;
-import com.github.javaparser.ast.type.Type;
 import org.drools.compiler.builder.impl.KnowledgeBuilderImpl;
 import org.drools.compiler.compiler.BaseKnowledgeBuilderResultImpl;
 import org.drools.compiler.lang.descr.AnnotationDescr;
@@ -28,26 +44,24 @@ import org.drools.compiler.lang.descr.ConditionalElementDescr;
 import org.drools.compiler.lang.descr.ForallDescr;
 import org.drools.compiler.lang.descr.PatternDescr;
 import org.drools.compiler.lang.descr.RuleDescr;
+import org.drools.core.addon.TypeResolver;
 import org.drools.core.ruleunit.RuleUnitDescriptionLoader;
 import org.drools.core.util.Bag;
 import org.drools.modelcompiler.builder.PackageModel;
-import org.drools.modelcompiler.builder.errors.UnknownRuleUnitError;
+import org.drools.modelcompiler.builder.errors.UnknownRuleUnitException;
 import org.kie.api.definition.type.ClassReactive;
 import org.kie.api.definition.type.PropertyReactive;
 import org.kie.internal.builder.KnowledgeBuilderResult;
 import org.kie.internal.builder.ResultSeverity;
 import org.kie.internal.builder.conf.PropertySpecificOption;
 import org.kie.internal.ruleunit.RuleUnitDescription;
-import org.drools.core.addon.TypeResolver;
+import org.kie.internal.ruleunit.RuleUnitVariable;
 
 import static java.util.Optional.empty;
 import static java.util.Optional.of;
 
-import static org.kie.internal.ruleunit.RuleUnitUtil.isDataSource;
-import static org.kie.internal.ruleunit.RuleUnitUtil.isLegacyRuleUnit;
-import static org.drools.modelcompiler.builder.generator.DrlxParseUtil.classToReferenceType;
 import static org.drools.modelcompiler.builder.generator.QueryGenerator.toQueryArg;
-import static org.drools.modelcompiler.util.ClassUtil.toRawClass;
+import static org.kie.internal.ruleunit.RuleUnitUtil.isLegacyRuleUnit;
 
 public class RuleContext {
 
@@ -70,8 +84,9 @@ public class RuleContext {
 
     private RuleUnitDescription ruleUnitDescr;
     private Map<String, Class<?>> ruleUnitVars = new HashMap<>();
+    private Map<String, Class<?>> ruleUnitVarsOriginalType = new HashMap<>();
 
-    private Map<String, String> aggregatePatternMap = new HashMap<>();
+    private Map<AggregateKey, String> aggregatePatternMap = new HashMap<>();
 
     /* These are used to check if some binding used in an OR expression is used in every branch */
     private Boolean isNestedInsideOr = false;
@@ -83,6 +98,8 @@ public class RuleContext {
     private Scope currentScope = new Scope();
     private Deque<Scope> scopesStack = new LinkedList<>();
     private Map<String, String> definedVars = new HashMap<>();
+
+    private int legacyAccumulateCounter = 0;
 
     public enum RuleDialect {
         JAVA,
@@ -122,6 +139,8 @@ public class RuleContext {
                 String drlFileName = drlFile.substring(drlFile.lastIndexOf('/')+1);
                 unitName = packageModel.getName() + '.' + drlFileName.substring(0, drlFileName.length() - ".drl".length());
                 useNamingConvention = true;
+            } else {
+                return;
             }
         }
 
@@ -130,24 +149,20 @@ public class RuleContext {
         if (ruDescr.isPresent()) {
             ruleUnitDescr = ruDescr.get();
         } else if (!useNamingConvention) {
-            addCompilationError( new UnknownRuleUnitError( unitName ) );
+            throw new UnknownRuleUnitException( unitName );
         }
     }
 
     private void processUnitData() {
         findUnitDescr();
         if (ruleUnitDescr != null && !isLegacyRuleUnit()) {
-            for (Map.Entry<String, Method> unitVar : ruleUnitDescr.getUnitVarAccessors().entrySet()) {
-                String unitVarName = unitVar.getKey();
-                java.lang.reflect.Type type = unitVar.getValue().getGenericReturnType();
-                Class<?> rawClass = toRawClass( type );
-                Class<?> resolvedType = ruleUnitDescr.getDatasourceType( unitVarName ).orElse( rawClass );
-
-                Type declType = classToReferenceType( rawClass );
+            for (RuleUnitVariable unitVar : ruleUnitDescr.getUnitVarDeclarations()) {
+                String unitVarName = unitVar.getName();
+                Class<?> resolvedType = unitVar.isDataSource() ? unitVar.getDataSourceParameterType() : unitVar.getType();
                 addRuleUnitVar( unitVarName, resolvedType );
 
-                getPackageModel().addGlobal( unitVarName, rawClass );
-                if ( isDataSource( rawClass ) ) {
+                getPackageModel().addGlobal( unitVarName, unitVar.getType() );
+                if ( unitVar.isDataSource() ) {
                     getPackageModel().addEntryPoint( unitVarName );
                 }
             }
@@ -180,12 +195,19 @@ public class RuleContext {
     public Optional<DeclarationSpec> getDeclarationById(String id) {
         DeclarationSpec spec = scopedDeclarations.get( getDeclarationKey( id ));
         if (spec == null) {
-            Class<?> unitVarType = ruleUnitVars.get( id );
+            Class<?> unitVarType = ruleUnitVarsOriginalType.get( id );
+            if(unitVarType == null) {
+                unitVarType = ruleUnitVars.get(id);
+            }
             if (unitVarType != null) {
-                spec = new DeclarationSpec( id, unitVarType );
+                spec = new DeclarationSpec(id, unitVarType);
             }
         }
         return Optional.ofNullable( spec );
+    }
+
+    public DeclarationSpec getDeclarationByIdWithException(String id) {
+        return getDeclarationById(id).orElseThrow(() -> new RuntimeException(id));
     }
 
     private String getDeclarationKey( String id ) {
@@ -216,8 +238,17 @@ public class RuleContext {
         ruleUnitVars.put( name, type );
     }
 
+    public void addRuleUnitVarOriginalType(String name, Class<?> type) {
+        ruleUnitVarsOriginalType.put( name, type );
+    }
+
     public Class<?> getRuleUnitVarType(String name) {
-        return ruleUnitVars.get( name );
+        Class<?> varType = ruleUnitVars.get( name );
+        if (varType != null) {
+            return varType;
+        }
+        DeclarationSpec decl = scopedDeclarations.get( "$p" );
+        return decl != null ? decl.getDeclarationClass() : null;
     }
 
     public DeclarationSpec addDeclaration(String bindingId, Class<?> declarationClass) {
@@ -290,6 +321,10 @@ public class RuleContext {
 
     public Consumer<Expression> popExprPointer() {
         return exprPointer.pop();
+    }
+
+    public Consumer<Expression> peekExprPointer() {
+        return exprPointer.peek();
     }
 
     public int getExprPointerLevel() {
@@ -373,7 +408,7 @@ public class RuleContext {
         return namedConsequences;
     }
 
-    public Map<String, String> getAggregatePatternMap() {
+    public Map<AggregateKey, String> getAggregatePatternMap() {
         return aggregatePatternMap;
     }
 
@@ -502,6 +537,14 @@ public class RuleContext {
                 return;
             }
         }
+    }
+
+    public int getLegacyAccumulateCounter() {
+        return legacyAccumulateCounter;
+    }
+
+    public void increaseLegacyAccumulateCounter() {
+        legacyAccumulateCounter++;
     }
 }
 

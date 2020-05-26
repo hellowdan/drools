@@ -1,9 +1,27 @@
+/*
+ * Copyright 2019 Red Hat, Inc. and/or its affiliates.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ *
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
 package org.drools.modelcompiler.builder.generator.declaredtype;
 
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 
 import com.github.javaparser.ast.Modifier;
 import com.github.javaparser.ast.NodeList;
@@ -19,6 +37,8 @@ import com.github.javaparser.ast.type.Type;
 import org.drools.compiler.lang.descr.EnumDeclarationDescr;
 import org.drools.compiler.lang.descr.EnumLiteralDescr;
 import org.drools.compiler.lang.descr.TypeFieldDescr;
+import org.drools.modelcompiler.builder.generator.declaredtype.api.FieldDefinition;
+import org.drools.modelcompiler.builder.generator.declaredtype.generator.GeneratedConstructor;
 
 import static com.github.javaparser.StaticJavaParser.parseType;
 import static com.github.javaparser.ast.NodeList.nodeList;
@@ -30,12 +50,12 @@ public class EnumGenerator {
 
     private List<FieldDeclaration> fields = new ArrayList<>();
 
-    EnumGenerator() {
+    public EnumGenerator() {
     }
 
     public TypeDeclaration generate(EnumDeclarationDescr enumDeclarationDescr) {
 
-        NodeList<Modifier> modifiers = nodeList();
+        NodeList<Modifier> modifiers = nodeList(Modifier.publicModifier());
 
         enumDeclaration = new EnumDeclaration(modifiers, enumDeclarationDescr.getFullTypeName());
 
@@ -53,7 +73,14 @@ public class EnumGenerator {
     }
 
     private void createConstructor(EnumDeclarationDescr enumDeclarationDescr) {
-        GeneratedConstructor fullArgumentConstructor = GeneratedConstructor.factoryEnum(enumDeclaration, enumDeclarationDescr.getFields());
+        List<FieldDefinition> enumFields = enumDeclarationDescr
+                .getFields()
+                .values()
+                .stream()
+                .map(DescrFieldDefinition::new)
+                .collect(Collectors.toList());
+
+        GeneratedConstructor fullArgumentConstructor = GeneratedConstructor.factoryEnum(enumDeclaration, enumFields);
         fullArgumentConstructor.generateConstructor(Collections.emptyList(), Collections.emptyList());
     }
 

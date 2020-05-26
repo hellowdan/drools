@@ -146,6 +146,12 @@ public class FEELFunctionsTest extends BaseFEELTest {
                 { "ceiling( -1.5 )", new BigDecimal("-1") , null},
                 { "ceiling( null )", null , FEELEvent.Severity.ERROR},
                 { "ceiling( n : 1.5 )", new BigDecimal("2") , null},
+                { "abs( 10 )", new BigDecimal("10") , null},
+                { "abs( -10 )", new BigDecimal("10") , null},
+                { "abs( n: -10 )", new BigDecimal("10") , null},
+                { "abs(@\"PT5H\")", Duration.parse("PT5H") , null},
+                { "abs(@\"-PT5H\")", Duration.parse("PT5H") , null},
+                { "abs(n: @\"-PT5H\")", Duration.parse("PT5H") , null},
                 { "sort( [3, 1, 4, 5, 2], function(x,y) x < y )", Arrays.asList( BigDecimal.valueOf( 1 ), BigDecimal.valueOf( 2 ), BigDecimal.valueOf( 3 ),
                                                                                  BigDecimal.valueOf( 4 ), BigDecimal.valueOf( 5 ) ), null },
                 { "sort( [3, 1, 4, 5, 2] )", Arrays.asList( BigDecimal.valueOf( 1 ), BigDecimal.valueOf( 2 ), BigDecimal.valueOf( 3 ),
@@ -195,6 +201,9 @@ public class FEELFunctionsTest extends BaseFEELTest {
                 { "week of year( date(2005, 1, 3) )", BigDecimal.valueOf( 1 ), null}, 
                 { "week of year( date(2005, 1, 9) )", BigDecimal.valueOf( 1 ), null}, 
                 { "week of year( date(2005, 1, 1) )", BigDecimal.valueOf( 53 ), null}, 
+                { "median( 8, 2, 5, 3, 4 )", new BigDecimal("4") , null},
+                { "median( [6, 1, 2, 3] )", new BigDecimal("2.5") , null},
+                { "median( [ ] ) ", null, null}, // DMN spec, Table 69: Semantics of list functions
         };
         return addAdditionalParameters(cases, false);
     }

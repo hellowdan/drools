@@ -23,6 +23,7 @@ import java.util.stream.Collectors;
 import org.kie.dmn.api.feel.runtime.events.FEELEvent;
 import org.kie.dmn.api.feel.runtime.events.FEELEvent.Severity;
 import org.kie.dmn.feel.lang.EvaluationContext;
+import org.kie.dmn.feel.runtime.FEELFunction;
 import org.kie.dmn.feel.runtime.events.FEELEventBase;
 import org.kie.dmn.feel.runtime.events.InvalidInputEvent;
 import org.kie.dmn.feel.runtime.events.InvalidParametersEvent;
@@ -33,13 +34,16 @@ public abstract class AbstractCustomFEELFunction<B> extends BaseFEELFunction {
 
     private static final Logger logger = LoggerFactory.getLogger(CustomFEELFunction.class);
 
-    final List<BaseFEELFunction.Param> parameters;
+    final List<FEELFunction.Param> parameters;
     protected final B body;
 
-    public AbstractCustomFEELFunction(String name, List<BaseFEELFunction.Param> parameters, B body) {
+    protected final EvaluationContext closureCtx;
+
+    public AbstractCustomFEELFunction(String name, List<BaseFEELFunction.Param> parameters, B body, EvaluationContext ctx) {
         super( name );
         this.parameters = parameters;
         this.body = body;
+        this.closureCtx = ctx;
     }
 
     public FEELFnResult<Object> invoke(EvaluationContext ctx, Object[] params) {
@@ -59,7 +63,7 @@ public abstract class AbstractCustomFEELFunction<B> extends BaseFEELFunction {
                     ctx.notifyEvt(() -> {
                         InvalidParametersEvent evt = new InvalidParametersEvent(Severity.WARN, paramName, "not conformant");
                         evt.setNodeName(getName());
-                        evt.setActualParameters(parameters.stream().map(BaseFEELFunction.Param::getName).collect(Collectors.toList()),
+                        evt.setActualParameters(parameters.stream().map(FEELFunction.Param::getName).collect(Collectors.toList()),
                                                 Arrays.asList(params));
                         return evt;
                     });
@@ -77,8 +81,9 @@ public abstract class AbstractCustomFEELFunction<B> extends BaseFEELFunction {
 
     protected abstract Object internalInvoke(EvaluationContext ctx);
 
-    public List<List<String>> getParameterNames() {
-        return Arrays.asList(parameters.stream().map(BaseFEELFunction.Param::getName).collect(Collectors.toList()));
+    @Override
+    public List<List<Param>> getParameters() {
+        return Arrays.asList(parameters);
     }
 
     String getSignature() {
@@ -88,6 +93,14 @@ public abstract class AbstractCustomFEELFunction<B> extends BaseFEELFunction {
     @Override
     protected boolean isCustomFunction() {
         return true;
+    }
+
+    public boolean isProperClosure() {
+        return closureCtx != null;
+    }
+
+    public EvaluationContext getEvaluationContext() {
+        return closureCtx;
     }
 
     @Override

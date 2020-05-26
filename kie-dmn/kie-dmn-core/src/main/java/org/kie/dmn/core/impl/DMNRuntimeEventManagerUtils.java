@@ -19,11 +19,27 @@ package org.kie.dmn.core.impl;
 import java.util.List;
 import java.util.function.Consumer;
 
+import org.kie.dmn.api.core.DMNModel;
 import org.kie.dmn.api.core.DMNResult;
 import org.kie.dmn.api.core.ast.BusinessKnowledgeModelNode;
 import org.kie.dmn.api.core.ast.DecisionNode;
 import org.kie.dmn.api.core.ast.DecisionServiceNode;
-import org.kie.dmn.api.core.event.*;
+import org.kie.dmn.api.core.event.AfterEvaluateAllEvent;
+import org.kie.dmn.api.core.event.AfterEvaluateBKMEvent;
+import org.kie.dmn.api.core.event.AfterEvaluateContextEntryEvent;
+import org.kie.dmn.api.core.event.AfterEvaluateDecisionEvent;
+import org.kie.dmn.api.core.event.AfterEvaluateDecisionServiceEvent;
+import org.kie.dmn.api.core.event.AfterEvaluateDecisionTableEvent;
+import org.kie.dmn.api.core.event.AfterInvokeBKMEvent;
+import org.kie.dmn.api.core.event.BeforeEvaluateAllEvent;
+import org.kie.dmn.api.core.event.BeforeEvaluateBKMEvent;
+import org.kie.dmn.api.core.event.BeforeEvaluateContextEntryEvent;
+import org.kie.dmn.api.core.event.BeforeEvaluateDecisionEvent;
+import org.kie.dmn.api.core.event.BeforeEvaluateDecisionServiceEvent;
+import org.kie.dmn.api.core.event.BeforeEvaluateDecisionTableEvent;
+import org.kie.dmn.api.core.event.BeforeInvokeBKMEvent;
+import org.kie.dmn.api.core.event.DMNRuntimeEventListener;
+import org.kie.dmn.api.core.event.DMNRuntimeEventManager;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -103,6 +119,34 @@ public final class DMNRuntimeEventManagerUtils {
         }
     }
 
+    public static void fireBeforeInvokeBKM( DMNRuntimeEventManager eventManager, BusinessKnowledgeModelNode bkm, DMNResult result) {
+        if( eventManager.hasListeners() ) {
+            BeforeInvokeBKMEvent event = new BeforeInvokeBKMEventImpl(bkm, result);
+            notifyListeners(eventManager, l -> l.beforeInvokeBKM(event));
+        }
+    }
+
+    public static void fireAfterInvokeBKM( DMNRuntimeEventManager eventManager, BusinessKnowledgeModelNode bkm, DMNResult result) {
+        if (eventManager.hasListeners()) {
+            AfterInvokeBKMEvent event = new AfterInvokeBKMEventImpl(bkm, result);
+            notifyListeners(eventManager, l -> l.afterInvokeBKM(event));
+        }
+    }
+
+    public static void fireBeforeEvaluateAll(DMNRuntimeEventManagerImpl eventManager, DMNModel model, DMNResultImpl result) {
+        if( eventManager.hasListeners() ) {
+            BeforeEvaluateAllEvent event = new BeforeEvaluateAllEventImpl(model.getNamespace(), model.getName(), result);
+            notifyListeners(eventManager, l -> l.beforeEvaluateAll(event));
+        }
+    }
+
+    public static void fireAfterEvaluateAll(DMNRuntimeEventManagerImpl eventManager, DMNModel model, DMNResultImpl result) {
+        if( eventManager.hasListeners() ) {
+            AfterEvaluateAllEvent event = new AfterEvaluateAllEventImpl(model.getNamespace(), model.getName(), result);
+            notifyListeners(eventManager, l -> l.afterEvaluateAll(event));
+        }
+    }
+
     private static void notifyListeners(DMNRuntimeEventManager eventManager, Consumer<DMNRuntimeEventListener> consumer) {
         for( DMNRuntimeEventListener listener : eventManager.getListeners() ) {
             try {
@@ -116,4 +160,5 @@ public final class DMNRuntimeEventManagerUtils {
     private DMNRuntimeEventManagerUtils() {
         // Constructing instances is not allowed for this class
     }
+
 }

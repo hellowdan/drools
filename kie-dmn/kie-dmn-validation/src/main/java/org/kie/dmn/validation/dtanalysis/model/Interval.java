@@ -250,6 +250,8 @@ public class Interval {
             } else {
                 return this.toString();
             }
+        } else if (this.equals(domain.getDomainMinMax())) {
+            return "-";
         } else if (upperBound.equals(domain.getMax()) && upperBound.getBoundaryType() == RangeBoundary.CLOSED) {
             if (lowerBound.getBoundaryType() == RangeBoundary.CLOSED) {
                 return ">=" + Bound.boundValueToString(lowerBound.getValue());
@@ -284,6 +286,12 @@ public class Interval {
             }
         }
         return results;
+    }
+
+    public boolean isSingularity() {
+        return lowerBound.getBoundaryType() == RangeBoundary.CLOSED &&
+               upperBound.getBoundaryType() == RangeBoundary.CLOSED &&
+               BoundValueComparator.compareValueDispatchingToInf(lowerBound, upperBound) == 0;
     }
 
     public static boolean adjOrOverlap(List<Interval> intervalsA, List<Interval> intervalsB) {

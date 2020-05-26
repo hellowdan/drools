@@ -1,3 +1,20 @@
+/*
+ * Copyright 2019 Red Hat, Inc. and/or its affiliates.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ *
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
 package org.drools.modelcompiler.builder.generator.visitor.accumulate;
 
 import java.util.Collections;
@@ -30,11 +47,13 @@ import org.drools.core.rule.Declaration;
 import org.drools.core.rule.Pattern;
 import org.drools.core.rule.RuleConditionElement;
 import org.drools.core.spi.DeclarationScopeResolver;
+import org.drools.core.util.StringUtils;
 import org.drools.modelcompiler.builder.GeneratedClassWithPackage;
 import org.drools.modelcompiler.builder.PackageModel;
 import org.drools.modelcompiler.builder.generator.RuleContext;
 
 import static com.github.javaparser.StaticJavaParser.parse;
+import static com.github.javaparser.StaticJavaParser.parseBodyDeclaration;
 import static com.github.javaparser.ast.NodeList.nodeList;
 import static org.drools.modelcompiler.builder.generator.DslMethodNames.ACC_FUNCTION_CALL;
 import static org.drools.modelcompiler.builder.generator.DslMethodNames.ACC_WITH_EXTERNAL_DECLRS_CALL;
@@ -64,6 +83,9 @@ public class LegacyAccumulate {
 
         ruleBuildContext = new RuleBuildContext(context.getKbuilder(), ruleDescr, dialectCompiletimeRegistry, pkg, defaultDialect);
         ruleBuildContext.setDeclarationResolver( new DelegateDeclarationScopeResolver(ruleBuildContext.getDeclarationResolver(), context, externalDeclrs ) );
+        for (int i = 0; i < context.getLegacyAccumulateCounter(); i++) {
+            ruleBuildContext.getNextId();
+        }
     }
 
     public void build() {
@@ -73,8 +95,20 @@ public class LegacyAccumulate {
         final Set<String> imports = ruleBuildContext.getPkg().getImports().keySet();
         final String packageName = ruleBuildContext.getPkg().getName();
 
-        GeneratedClassWithPackage generatedClassWithPackage = createAllAccumulateClass(imports, packageName);
-        packageModel.addGeneratedAccumulateClasses(generatedClassWithPackage);
+        if ( context.getLegacyAccumulateCounter() == 0 ) {
+            GeneratedClassWithPackage generatedClassWithPackage = createAllAccumulateClass( imports, packageName );
+            packageModel.addGeneratedAccumulateClasses( generatedClassWithPackage );
+        } else {
+            for (GeneratedClassWithPackage c : packageModel.getGeneratedAccumulateClasses()) {
+                String ruleClassName = StringUtils.ucFirst(context.getRuleDescr().getClassName());
+                if (ruleClassName.equals( c.getClassName() )) {
+                    for (String m : ruleBuildContext.getMethods()) {
+                        c.getGeneratedClass().addMember( parseBodyDeclaration(m) );
+                    }
+                    break;
+                }
+            }
+        }
 
         GeneratedClassWithPackage invokerGenerated = createInvokerClass(imports, packageName);
         packageModel.addGeneratedAccumulateClasses(invokerGenerated);
@@ -104,6 +138,7 @@ public class LegacyAccumulate {
         accFunctionCall = new MethodCallExpr(accFunctionCall, BIND_AS_CALL, nodeList(bindingVariable));
 
         context.addExpression(accFunctionCall);
+        context.increaseLegacyAccumulateCounter();
     }
 
     private GeneratedClassWithPackage createInvokerClass(Set<String> imports, String packageName) {

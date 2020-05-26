@@ -6,7 +6,7 @@
   <parent>
     <groupId>org.kie</groupId>
     <artifactId>kie-parent</artifactId>
-    <version>7.31.0-SNAPSHOT</version>
+    <version>7.39.0-SNAPSHOT</version>
     <!-- relativePath causes out-of-date problems on hudson slaves -->
     <!--<relativePath>../droolsjbpm-build-bootstrap/pom.xml</relativePath>-->
   </parent>
@@ -45,7 +45,7 @@
 
   <scm>
     <connection>scm:git:https://github.com:kiegroup/drools.git</connection>
-    <developerConnection>scm:git:git@github.com:kirgroup/drools.git</developerConnection>
+    <developerConnection>scm:git:git@github.com:kiegroup/drools.git</developerConnection>
     <url>https://github.com/kiegroup/drools</url>
   </scm>
 
@@ -74,6 +74,7 @@
     <module>drools-workbench-models</module>
     <module>drools-test-coverage</module>
     <module>drools-scenario-simulation</module>
+    <module>kie-memory-compiler</module>
   </modules>
 
   <dependencyManagement>

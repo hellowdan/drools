@@ -61,6 +61,7 @@ import org.drools.compiler.rule.builder.dialect.DialectUtil;
 import org.drools.compiler.rule.builder.dialect.java.JavaDialect;
 import org.drools.compiler.rule.builder.dialect.mvel.MVELAnalysisResult;
 import org.drools.compiler.rule.builder.dialect.mvel.MVELDialect;
+import org.drools.compiler.rule.builder.util.ConstraintUtil;
 import org.drools.compiler.builder.DroolsAssemblerContext;
 import org.drools.core.base.ClassFieldReader;
 import org.drools.core.base.ClassObjectType;
@@ -231,7 +232,8 @@ public class PatternBuilder
             firstXpathChunk.getConstraints()
                     .forEach(s -> patternDescr.addConstraint(new ExprConstraintDescr(s)));
             if (!xpathAnalysis.isSinglePart()) {
-                patternDescr.addConstraint(new ExprConstraintDescr(patternDescr.getIdentifier() + " : " + expr.substring(xpathAnalysis.getPart(1).getStart())));
+                String xpathExpr = (patternDescr.getIdentifier() == null ? "" : patternDescr.getIdentifier() + " : ") + expr.substring(xpathAnalysis.getPart(1).getStart());
+                patternDescr.addConstraint(new ExprConstraintDescr(xpathExpr));
                 patternDescr.setIdentifier("$void$");
             }
         } else {
@@ -243,7 +245,8 @@ public class PatternBuilder
             }
             patternDescr.setXpathStartDeclaration(declr);
             patternDescr.setObjectType(declr.getExtractor().getExtractToClassName());
-            expr = patternDescr.getIdentifier() + (patternDescr.isUnification() ? " := " : " : ") + expr.substring(identifier.length() + 1);
+            expr = (patternDescr.getIdentifier() != null ? patternDescr.getIdentifier() + (patternDescr.isUnification() ? " := " : " : ") : "")
+                    + expr.substring(identifier.length() + 1);
             descr.setExpression(expr);
         }
     }
@@ -769,7 +772,7 @@ public class PatternBuilder
                 return constraints;
             }
             Constraint constraint = isXPath ?
-                    buildXPathDescr(context, patternDescr, pattern, d, mvelCtx) :
+                    buildXPathDescr(context, patternDescr, pattern, (ExpressionDescr)  d, mvelCtx) :
                     buildCcdDescr(context, patternDescr, pattern, d, descr, mvelCtx);
             if (constraint != null) {
                 Declaration declCorrXpath = getDeclarationCorrespondingToXpath(pattern, isXPath, constraint);
@@ -834,10 +837,10 @@ public class PatternBuilder
     private Constraint buildXPathDescr(RuleBuildContext context,
                                        PatternDescr patternDescr,
                                        Pattern pattern,
-                                       BaseDescr descr,
+                                       ExpressionDescr descr,
                                        MVELDumper.MVELDumperContext mvelCtx) {
 
-        String expression = ((ExpressionDescr) descr).getExpression();
+        String expression = descr.getExpression();
         XpathAnalysis xpathAnalysis = XpathAnalysis.analyze(expression);
 
         if (xpathAnalysis.hasError()) {
@@ -889,6 +892,7 @@ public class PatternBuilder
                     currentObjectType = getObjectType(context, patternDescr, patternClass.getName());
                 }
 
+                context.increaseXpathChuckNr();
                 pattern.setObjectType(currentObjectType);
                 backReferenceClasses.add(0, patternClass);
                 backRef.reset();
@@ -908,6 +912,7 @@ public class PatternBuilder
             mvelCtx.setInXpath(false);
             pattern.setBackRefDeclarations(null);
             pattern.setObjectType(originalType);
+            context.resetXpathChuckNr();
         }
 
         xpathConstraint.setXpathStartDeclaration(patternDescr.getXpathStartDeclaration());
@@ -968,7 +973,7 @@ public class PatternBuilder
                 !ClassObjectType.Match_ObjectType.isAssignableFrom(pattern.getObjectType())) {
             String normalizedExpr = normalizeExpression(context, pattern, relDescr, expr);
             if (negated) {
-                normalizedExpr = "!(" + normalizedExpr + ")";
+                normalizedExpr = normalizeNegatedExpr(normalizedExpr, relDescr.getOperator());
                 relDescr.getOperatorDescr().setNegated( !relDescr.getOperatorDescr().isNegated() );
             }
             return buildRelationalExpression(context, pattern, relDescr, normalizedExpr, aliases);
@@ -978,10 +983,20 @@ public class PatternBuilder
         // Or it's a Map and we have to treat it as a special case
 
         String rewrittenExpr = rewriteOrExpressions(context, pattern, d, expr);
+        if (simple) { // simple means also relDescr is != null
+            rewrittenExpr = ConstraintUtil.inverseExpression(relDescr, expr, findLeftExpressionValue(relDescr), findRightExpressionValue(relDescr), relDescr.getOperator(), pattern);
+        }
         if (negated) {
             rewrittenExpr = "!(" + rewrittenExpr + ")";
         }
         return createAndBuildPredicate(context, pattern, d, rewrittenExpr, aliases);
+    }
+
+    private String normalizeNegatedExpr(String expr, String operator) {
+        IndexUtil.ConstraintType constraintType = IndexUtil.ConstraintType.decode(operator);
+        return constraintType.getOperator() != null ?
+                expr.replace( constraintType.getOperator(), constraintType.negate().getOperator() ) :
+                "!(" + expr + ")";
     }
 
     private String rewriteOrExpressions(RuleBuildContext context, Pattern pattern, BaseDescr d, String expr) {
@@ -1033,11 +1048,13 @@ public class PatternBuilder
 
     private String normalizeExpression(RuleBuildContext context, Pattern pattern, RelationalExprDescr subDescr, String subExpr) {
         String leftValue = findLeftExpressionValue(subDescr);
+        String rightValue = findRightExpressionValue(subDescr);
         String operator = subDescr.getOperator();
+
+        subExpr = ConstraintUtil.inverseExpression(subDescr, subExpr, leftValue, rightValue, operator, pattern);
 
         ValueType valueType = getValueType(context, pattern, leftValue);
         if (valueType != null && valueType.getSimpleType() == SimpleValueType.DATE) {
-            String rightValue = findRightExpressionValue(subDescr);
             FieldValue fieldValue = getFieldValue(context, valueType, rightValue);
             if (fieldValue != null) {
                 subExpr = subExpr.replace(rightValue, getNormalizeDate(valueType, fieldValue));
@@ -1046,7 +1063,6 @@ public class PatternBuilder
         }
 
         if (operator.equals("str")) {
-            String rightValue = findRightExpressionValue(subDescr);
             return normalizeStringOperator(leftValue, rightValue, new LiteralRestrictionDescr(operator,
                                                                                               subDescr.isNegated(),
                                                                                               subDescr.getParameters(),
@@ -1148,14 +1164,16 @@ public class PatternBuilder
             }
         }
 
-        ValueType vtype = extractor.getValueType();
-        String operator = relDescr.getOperator().trim();
-        LiteralRestrictionDescr restrictionDescr = buildLiteralRestrictionDescr(context, relDescr, value2, operator, isConstant);
+        LiteralRestrictionDescr restrictionDescr = buildLiteralRestrictionDescr(context, relDescr, value2, isConstant);
 
         if (restrictionDescr != null) {
+            ValueType vtype = extractor.getValueType();
             FieldValue field = getFieldValue(context, vtype, restrictionDescr.getText().trim());
             if (field != null) {
-                Constraint constraint = getConstraintBuilder(context).buildLiteralConstraint(context, pattern, vtype, field, expr, value1, operator, value2, extractor, restrictionDescr, aliases);
+                Constraint constraint = getConstraintBuilder(context)
+                        .buildLiteralConstraint(context, pattern, vtype, field, expr,
+                                value1, relDescr.getOperator(), relDescr.isNegated(), value2,
+                                extractor, restrictionDescr, aliases);
                 if (constraint != null) {
                     return constraint;
                 }
@@ -1204,7 +1222,7 @@ public class PatternBuilder
             if (declr != null) {
                 declarations = new Declaration[]{declr};
             } else {
-                declarations = getDeclarationsForReturnValue(context, relDescr, operator, value2);
+                declarations = getDeclarationsForReturnValue(context, relDescr, value2);
                 if (declarations == null) {
                     return null;
                 }
@@ -1214,9 +1232,9 @@ public class PatternBuilder
         return getConstraintBuilder(context).buildVariableConstraint(context, pattern, expr, declarations, value1, relDescr.getOperatorDescr(), value2, extractor, declr, relDescr, aliases);
     }
 
-    private Declaration[] getDeclarationsForReturnValue(RuleBuildContext context, RelationalExprDescr relDescr, String operator, String value2) {
+    private Declaration[] getDeclarationsForReturnValue(RuleBuildContext context, RelationalExprDescr relDescr, String value2) {
         Pattern pattern = (Pattern) context.getDeclarationResolver().peekBuildStack();
-        ReturnValueRestrictionDescr returnValueRestrictionDescr = new ReturnValueRestrictionDescr(operator, relDescr, value2);
+        ReturnValueRestrictionDescr returnValueRestrictionDescr = new ReturnValueRestrictionDescr(relDescr.getOperator(), relDescr, value2);
 
         AnalysisResult analysis = context.getDialect().analyzeExpression(context,
                                                                          returnValueRestrictionDescr,
@@ -1274,11 +1292,10 @@ public class PatternBuilder
     protected LiteralRestrictionDescr buildLiteralRestrictionDescr(RuleBuildContext context,
                                                                    RelationalExprDescr exprDescr,
                                                                    String rightValue,
-                                                                   String operator,
                                                                    boolean isRightLiteral) {
         // is it a literal? Does not include enums
         if (isRightLiteral) {
-            return new LiteralRestrictionDescr(operator, exprDescr.isNegated(), exprDescr.getParameters(), rightValue, LiteralRestrictionDescr.TYPE_STRING);
+            return new LiteralRestrictionDescr(exprDescr.getOperator(), exprDescr.isNegated(), exprDescr.getParameters(), rightValue, LiteralRestrictionDescr.TYPE_STRING);
         }
 
         // is it an enum?
@@ -1290,7 +1307,7 @@ public class PatternBuilder
             try {
                 context.getDialect().getTypeResolver().resolveType(mainPart);
                 if (lastPart.indexOf('(') < 0 && lastPart.indexOf('.') < 0 && lastPart.indexOf('[') < 0) {
-                    return new LiteralRestrictionDescr(operator, exprDescr.isNegated(), exprDescr.getParameters(), rightValue, LiteralRestrictionDescr.TYPE_STRING);
+                    return new LiteralRestrictionDescr(exprDescr.getOperator(), exprDescr.isNegated(), exprDescr.getParameters(), rightValue, LiteralRestrictionDescr.TYPE_STRING);
                 }
             } catch (ClassNotFoundException e) {
                 // do nothing as this is just probing to see if it was a class, which we now know it isn't :)
@@ -1453,6 +1470,9 @@ public class PatternBuilder
         }
 
         Declaration declr = pattern.addDeclaration(fieldBindingDescr.getVariable());
+        if (context.isInXpath()) {
+            declr.setxPathOffset( context.getXpathChuckNr() );
+        }
 
         final InternalReadAccessor extractor = getFieldReadAccessor(context,
                                                                     fieldBindingDescr,
@@ -1469,7 +1489,7 @@ public class PatternBuilder
 
         declr.setReadAccessor(extractor);
 
-        if (typeDeclaration != null && extractor instanceof ClassFieldReader) {
+        if (!declr.isFromXpathChunk() && typeDeclaration != null && extractor instanceof ClassFieldReader) {
             addFieldToPatternWatchlist(pattern, typeDeclaration, ((ClassFieldReader) extractor).getFieldName());
         }
     }

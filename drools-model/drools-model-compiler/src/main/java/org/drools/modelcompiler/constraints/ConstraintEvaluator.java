@@ -1,3 +1,20 @@
+/*
+ * Copyright 2019 Red Hat, Inc. and/or its affiliates.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ *
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
 package org.drools.modelcompiler.constraints;
 
 import java.util.ArrayList;
@@ -95,7 +112,7 @@ public class ConstraintEvaluator {
         if (declaration == patternDeclaration) {
             return handle.getObject();
         } else {
-            Object object = tuple != null && declaration.getPattern().getOffset() < tuple.size() ? tuple.getObject(declaration.getPattern().getOffset()) : handle.getObject();
+            Object object = tuple != null && declaration.getOffset() < tuple.size() ? tuple.getObject(declaration.getOffset()) : handle.getObject();
             return declaration.getValue(workingMemory, object);
         }
     }
@@ -121,7 +138,7 @@ public class ConstraintEvaluator {
         for (int i = 0; i < fhs.length; i++) {
             fhs[i] = declarations[i] == patternDeclaration ?
                      handle :
-                     tuple.get(declarations[i].getPattern().getOffset());
+                     tuple.get(declarations[i].getOffset());
         }
         return fhs;
     }

@@ -21,6 +21,8 @@ import java.io.ObjectInput;
 import java.io.ObjectOutput;
 import java.io.Serializable;
 import java.math.BigDecimal;
+import java.time.Duration;
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Calendar;
@@ -30,7 +32,9 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
+import java.util.stream.IntStream;
 
 import org.assertj.core.api.Assertions;
 import org.drools.modelcompiler.domain.Adult;
@@ -430,6 +434,63 @@ public class AccumulateTest extends BaseModelTest {
     }
 
     @Test
+    public void testAccumulateWithAnd3Binds() {
+        String str =
+                "import " + Adult.class.getCanonicalName() + ";\n" +
+                        "import " + Child.class.getCanonicalName() + ";\n" +
+                        "import " + Result.class.getCanonicalName() + ";\n" +
+                        "rule R when\n" +
+                        "  accumulate( $c : Child( age < 10 ) and $a : Adult( name == $c.parent ) and $s : String( this == $a.name ), " +
+                        "$parentAge : sum($a.getAge() + $c.getAge() + $s.length()) )\n" +
+                        "then\n" +
+                        "  insert(new Result($parentAge));\n" +
+                        "end";
+
+        KieSession ksession = getKieSession( str );
+
+        Adult a = new Adult( "Mario", 43 );
+        Child c = new Child( "Sofia", 6, "Mario" );
+
+        ksession.insert( a );
+        ksession.insert( c );
+        ksession.insert( "Mario" );
+        ksession.fireAllRules();
+
+        Collection<Result> results = getObjectsIntoList(ksession, Result.class);
+        // The original DSL test returns a double while the exec model returns an integer
+        assertEquals(54, ((Number)results.iterator().next().getValue()).intValue());
+    }
+
+    @Test
+    public void testAccumulateWithAnd4Binds() {
+        String str =
+                "import " + Adult.class.getCanonicalName() + ";\n" +
+                        "import " + Child.class.getCanonicalName() + ";\n" +
+                        "import " + Result.class.getCanonicalName() + ";\n" +
+                        "rule R when\n" +
+                        "  accumulate( $c : Child( age < 10 ) and $a : Adult( name == $c.parent ) and $s1 : String( this == $a.name ) and $s2 : String( this == $c.name ), " +
+                        "$parentAge : sum($a.getAge() + $c.getAge() + $s1.length() + $s2.length()) )\n" +
+                        "then\n" +
+                        "  insert(new Result($parentAge));\n" +
+                        "end";
+
+        KieSession ksession = getKieSession( str );
+
+        Adult a = new Adult( "Mario", 43 );
+        Child c = new Child( "Sofia", 6, "Mario" );
+
+        ksession.insert( a );
+        ksession.insert( c );
+        ksession.insert( "Mario" );
+        ksession.insert( "Sofia" );
+        ksession.fireAllRules();
+
+        Collection<Result> results = getObjectsIntoList(ksession, Result.class);
+        // The original DSL test returns a double while the exec model returns an integer
+        assertEquals(59, ((Number)results.iterator().next().getValue()).intValue());
+    }
+
+    @Test
     public void testAccumulateWithCustomImport() {
         String str =
                 "import accumulate " + TestFunction.class.getCanonicalName() + " f;\n" +
@@ -559,7 +620,7 @@ public class AccumulateTest extends BaseModelTest {
         checkCollect( str );
     }
 
-    @Test 
+    @Test
     public void testFromCollectWithExpandedAccumulate() {
         String str =
                 "import " + Customer.class.getCanonicalName() + ";\n" +
@@ -1609,6 +1670,7 @@ public class AccumulateTest extends BaseModelTest {
                 "import " + GroupByAcc.class.getCanonicalName() + ";\n" +
                 "import " + GroupByAcc.Pair.class.getCanonicalName() + ";\n" +
                 "import " + Person.class.getCanonicalName() + ";\n" +
+                "global Map results;\n" +
                 "rule R when\n" +
                 "  $pairs : List( size > 0 ) from accumulate (\n" +
                 "            Person( $age : age, $firstLetter : name.substring(0,1) ), " +
@@ -1619,10 +1681,13 @@ public class AccumulateTest extends BaseModelTest {
                 "         )\n" +
                 "  GroupByAcc.Pair( $initial : key, $sumOfAges : value ) from $pairs\n" +
                 "then\n" +
-                "  System.out.println(\"Sum of ages of person with initial '\" + $initial + \"' is \" + $sumOfAges);\n" +
+                "  results.put($initial, $sumOfAges);\n" +
                 "end";
 
         KieSession ksession = getKieSession(str);
+
+        Map results = new HashMap();
+        ksession.setGlobal( "results", results );
 
         ksession.insert(new Person("Mark", 42));
         ksession.insert(new Person("Edson", 38));
@@ -1632,16 +1697,116 @@ public class AccumulateTest extends BaseModelTest {
         FactHandle geoffreyFH = ksession.insert(new Person("Geoffrey", 35));
         ksession.fireAllRules();
 
-        System.out.println("----");
+        assertEquals( 3, results.size() );
+        assertEquals( 35, results.get("G") );
+        assertEquals( 71, results.get("E") );
+        assertEquals( 126, results.get("M") );
+        results.clear();
 
         ksession.delete( meFH );
         ksession.fireAllRules();
 
-        System.out.println("----");
+        assertEquals( 1, results.size() );
+        assertEquals( 81, results.get("M") );
+        results.clear();
 
         ksession.update(geoffreyFH, new Person("Geoffrey", 40));
         ksession.insert(new Person("Matteo", 38));
         ksession.fireAllRules();
+
+        assertEquals( 2, results.size() );
+        assertEquals( 40, results.get("G") );
+        assertEquals( 119, results.get("M") );
+    }
+
+    public static class GroupKey {
+        private final Object key;
+
+        public GroupKey( Object key ) {
+            this.key = key;
+        }
+
+        public Object getKey() {
+            return key;
+        }
+
+        @Override
+        public boolean equals( Object o ) {
+            GroupKey groupKey = ( GroupKey ) o;
+            return key.equals( groupKey.key );
+        }
+
+        @Override
+        public int hashCode() {
+            return Objects.hash( key );
+        }
+    }
+
+    @Test
+    public void testGroupBy3() {
+        // DROOLS-4737
+        String str =
+                "import java.util.*;\n" +
+                "import " + GroupKey.class.getCanonicalName() + ";\n" +
+                "import " + Person.class.getCanonicalName() + ";\n" +
+                "global Map results;\n" +
+                "rule R1 when\n" +
+                "    Person( $initial : name.substring(0,1) )\n" +
+                "    not( GroupKey(key == $initial) )\n" +
+                "then\n" +
+                "    insert( new GroupKey( $initial ) );\n" +
+                "end\n" +
+                "\n" +
+                "rule R2 when\n" +
+                "    $k: GroupKey( $initial : key )\n" +
+                "    not( Person( name.substring(0,1) == $initial ) )\n" +
+                "then\n" +
+                "    delete( $k );\n" +
+                "end\n" +
+                "\n" +
+                "rule R3 when\n" +
+                "    GroupKey( $initial : key )\n" +
+                "    accumulate (\n" +
+                "            Person( $age: age, name.substring(0,1) == $initial );\n" +
+                "            $sumOfAges : sum($age)\n" +
+                "         )\n" +
+                "then\n" +
+                "    results.put($initial, $sumOfAges);\n" +
+                "end";
+
+        KieSession ksession = getKieSession(str);
+
+        Map results = new HashMap();
+        ksession.setGlobal( "results", results );
+
+        ksession.insert(new Person("Mark", 42));
+        ksession.insert(new Person("Edson", 38));
+        FactHandle meFH = ksession.insert(new Person("Mario", 45));
+        ksession.insert(new Person("Maciej", 39));
+        ksession.insert(new Person("Edoardo", 33));
+        FactHandle geoffreyFH = ksession.insert(new Person("Geoffrey", 35));
+        ksession.fireAllRules();
+
+        assertEquals( 3, results.size() );
+        assertEquals( 35, results.get("G") );
+        assertEquals( 71, results.get("E") );
+        assertEquals( 126, results.get("M") );
+        results.clear();
+
+        ksession.delete( meFH );
+        ksession.fireAllRules();
+
+        assertEquals( 1, results.size() );
+        assertEquals( 81, results.get("M") );
+        results.clear();
+
+        ksession.update(geoffreyFH, new Person("Geoffrey", 40));
+        ksession.insert(new Person("Matteo", 38));
+        ksession.fireAllRules();
+
+        assertEquals( 2, results.size() );
+        assertEquals( 40, results.get("G") );
+        assertEquals( 119, results.get("M") );
     }
 
     @Test
@@ -1662,6 +1827,213 @@ public class AccumulateTest extends BaseModelTest {
         ksession.insert(new Person("Mark", 42));
         ksession.insert(new Person("Edson", 38));
         ksession.insert(new Person("Mario", 45));
+        ksession.fireAllRules();
+    }
+
+    @Test
+    public void testCoercionInAccumulate() {
+        String str =
+                        "global java.util.List result;\n" +
+                        "rule \"Row 1 moveToBiggerCities\"\n" +
+                        "  dialect \"mvel\"\n" +
+                                "  when\n" +
+                        "    $count : Integer( intValue() > 5 , intValue() <= 10 ) " +
+                        "      from accumulate ( Integer(), count(1)) \n" +
+                        "  then\n" +
+                        " result.add($count);" +
+                        "end";
+
+        List<Long> result = new ArrayList<>();
+
+        KieSession ksession = getKieSession(str);
+        ksession.setGlobal("result", result);
+
+        IntStream.range(1, 7).forEach(ksession::insert);
+
+        ksession.fireAllRules();
+
+        assertEquals(6, result.iterator().next().longValue());
+
+    }
+
+    @Test
+    public void testCoercionInAccumulate2() {
+        final String drl =
+                "import " + Person.class.getCanonicalName() + "\n" +
+                        "global java.util.List result; \n" +
+                        "rule \"rule\"\n" +
+                        "    when\n" +
+                        "        Person($age : age)\n" +
+                        "        $count : Number(intValue <= $age) from accumulate(\n" +
+                        "            $i : Integer(),\n" +
+                        "            count($i)\n" +
+                        "        )\n" +
+                        "    then\n" +
+                        "       result.add($count);\n" +
+                        "end\n";
+
+        List<Long> result = new ArrayList<>();
+
+        KieSession ksession = getKieSession(drl);
+        ksession.setGlobal("result", result);
+
+        ksession.insert(new Person("Luca", 35));
+
+        ksession.insert(1);
+        ksession.insert(2);
+        ksession.insert(3);
+
+        ksession.fireAllRules();
+
+        assertEquals(3, result.iterator().next().longValue());
+    }
+
+    public static class Interval {
+
+        private LocalDateTime start;
+        private LocalDateTime end;
+
+        public Interval(LocalDateTime start, LocalDateTime end) {
+            this.start = start;
+            this.end = end;
+        }
+
+        public LocalDateTime getStart() {
+            return start;
+        }
+
+        public void setStart(LocalDateTime start) {
+            this.start = start;
+        }
+
+        public LocalDateTime getEnd() {
+            return end;
+        }
+
+        public void setEnd(LocalDateTime end) {
+            this.end = end;
+        }
+
+        public long between(LocalDateTime start, LocalDateTime end) {
+            return Duration.between(start, end).toMinutes();
+        }
+    }
+
+    @Test
+    public void testAccumulateOnStaticMethod() {
+        // DROOLS-4979
+        final String drl =
+                "import java.time.Duration\n" +
+                "import " + Interval.class.getCanonicalName() + ";\n" +
+                "global java.util.List result; \n" +
+                "\n" +
+                "rule \"Rule1\"\n" +
+                "when\n" +
+                "    $count : Number() from accumulate(\n" +
+                "       Interval($start : start, $end : end), " +
+                "       sum(Duration.between($start, $end).toMinutes())  " +
+                "    ) " +
+                "then\n" +
+                "       result.add($count);\n" +
+                "end\n";
+
+        List<Long> result = new ArrayList<>();
+
+        KieSession ksession = getKieSession(drl);
+        ReteDumper.dumpRete( ksession );
+        ksession.setGlobal("result", result);
+
+        ksession.insert(new Interval(
+                LocalDateTime.of(2020, 1, 22, 11, 43),
+                LocalDateTime.of(2020, 1, 22, 12, 43)
+        ));
+
+        ksession.fireAllRules();
+
+        assertEquals(60, result.iterator().next().longValue());
+
+    }
+
+    @Test
+    public void testAccumulateOfDurationBetweenDateTime() {
+        // DROOLS-4979
+        final String drl =
+                "import java.time.Duration\n" +
+                "import " + Interval.class.getCanonicalName() + ";\n" +
+                "global java.util.List result; \n" +
+                "\n" +
+                "rule \"Rule1\"\n" +
+                "when\n" +
+                "    $count : Number() from accumulate(\n" +
+                "       $i : Interval($start : start, $end : end), " +
+                "       sum($i.between($start, $end))  " +
+                "    ) " +
+                "then\n" +
+                "       result.add($count);\n" +
+                "end\n";
+
+        List<Long> result = new ArrayList<>();
+
+        KieSession ksession = getKieSession(drl);
+        ksession.setGlobal("result", result);
+
+        ksession.insert(new Interval(
+                LocalDateTime.of(2020, 1, 22, 11, 43),
+                LocalDateTime.of(2020, 1, 22, 12, 43)
+        ));
+
+        ksession.fireAllRules();
+
+        assertEquals(60, result.iterator().next().longValue());
+
+    }
+
+    @Test
+    public void testGroupByRegrouped() {
+        // DROOLS-5283
+        String str =
+                "import java.util.*;\n" +
+                        "import " + GroupByAcc.class.getCanonicalName() + ";\n" +
+                        "import " + GroupByAcc.Pair.class.getCanonicalName() + ";\n" +
+                        "import " + Person.class.getCanonicalName() + ";\n" +
+                        "rule R when\n" +
+                        "  $pairs : List( size > 0 ) from accumulate (\n" +
+                        "            Person( $age : age, $firstLetter : name.substring(0,1) ),\n" +
+                        "                init( GroupByAcc acc = new GroupByAcc(); ),\n" +
+                        "                action( acc.action( $firstLetter, $age ); ),\n" +
+                        "                reverse( acc.reverse( $firstLetter, $age ); ),\n" +
+                        "                result( acc.result() )\n" +
+                        "         )\n" +
+                        "  $pairs2 : List( size > 0 ) from accumulate (\n" +
+                        "            GroupByAcc.Pair( $initial : key, $sumOfAges : value ) from $pairs,\n" +
+                        "                init( GroupByAcc acc2 = new GroupByAcc(); ),\n" +
+                        "                action( acc2.action( (String) $initial, (Integer) $sumOfAges ); ),\n" +
+                        "                reverse( acc2.reverse( (String) $initial, (Integer) $sumOfAges ); ),\n" +
+                        "                result( acc2.result() )\n" +
+                        "         )\n" +
+                        "  $p: GroupByAcc.Pair() from $pairs2\n" +
+                        "then\n" +
+                        "  System.out.println($p.toString());\n" +
+                        "end";
+        KieSession ksession = getKieSession(str);
+
+        ksession.insert(new Person("Mark", 42));
+        ksession.insert(new Person("Edson", 38));
+        FactHandle meFH = ksession.insert(new Person("Mario", 45));
+        ksession.insert(new Person("Maciej", 39));
+        ksession.insert(new Person("Edoardo", 33));
+        FactHandle geoffreyFH = ksession.insert(new Person("Geoffrey", 35));
+        ksession.fireAllRules();
+
+        System.out.println("----");
+
+        ksession.delete( meFH );
+        ksession.fireAllRules();
+
+        System.out.println("----");
+
+        ksession.update(geoffreyFH, new Person("Geoffrey", 40));
+        ksession.insert(new Person("Matteo", 38));
         ksession.fireAllRules();
     }
 }

@@ -1,3 +1,20 @@
+/*
+ * Copyright 2019 Red Hat, Inc. and/or its affiliates.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ *
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
 package org.drools.modelcompiler.builder.generator.visitor.pattern;
 
 import java.util.ArrayList;
@@ -16,6 +33,8 @@ import org.drools.compiler.lang.descr.ExprConstraintDescr;
 import org.drools.compiler.lang.descr.PatternDescr;
 import org.drools.compiler.lang.descr.PatternSourceDescr;
 import org.drools.core.util.ClassUtils;
+import org.drools.modelcompiler.builder.generator.AggregateKey;
+import org.drools.modelcompiler.builder.generator.ConstraintUtil;
 import org.drools.mvel.parser.ast.expr.OOPathExpr;
 import com.github.javaparser.ast.expr.Expression;
 import com.github.javaparser.ast.expr.MethodCallExpr;
@@ -86,7 +105,7 @@ public abstract class PatternDSL implements DSLNode {
         if (pattern.getIdentifier() == null) {
             final String generatedName = generateName("pattern_" + patternType.getSimpleName());
             final String patternNameAggregated = findFirstInnerBinding(constraintDescrs, patternType)
-                    .map(ib -> context.getAggregatePatternMap().putIfAbsent(ib, generatedName))
+                    .map(ib -> context.getAggregatePatternMap().putIfAbsent(new AggregateKey(ib, patternType), generatedName))
                     .orElse(generatedName);
             pattern.setIdentifier(GENERATED_PATTERN_PREFIX + patternNameAggregated);
         }
@@ -123,9 +142,11 @@ public abstract class PatternDSL implements DSLNode {
 
                 String rightExpression = printConstraint(expr.asBinaryExpr().getRight());
                 DrlxParseResult rightExpressionReparsed = constraintParser.drlxParse(patternType, patternIdentifier, rightExpression, isPositional);
-                patternConstraintParseResults.add(new PatternConstraintParseResult(rightExpression, patternIdentifier, rightExpressionReparsed));
+                DrlxParseResult normalizedParseResult = ConstraintUtil.normalizeConstraint(rightExpressionReparsed);
+                patternConstraintParseResults.add(new PatternConstraintParseResult(rightExpression, patternIdentifier, normalizedParseResult));
             } else {
-                patternConstraintParseResults.add(new PatternConstraintParseResult(expression, patternIdentifier, drlxParseResult));
+                DrlxParseResult normalizedParseResult = ConstraintUtil.normalizeConstraint(drlxParseResult);
+                patternConstraintParseResults.add(new PatternConstraintParseResult(expression, patternIdentifier, normalizedParseResult));
             }
         }
 

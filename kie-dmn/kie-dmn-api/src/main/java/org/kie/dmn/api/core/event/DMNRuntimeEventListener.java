@@ -37,4 +37,12 @@ public interface DMNRuntimeEventListener {
     default void beforeEvaluateDecisionService(BeforeEvaluateDecisionServiceEvent event) {}
 
     default void afterEvaluateDecisionService(AfterEvaluateDecisionServiceEvent event) {}
+
+    default void beforeInvokeBKM(BeforeInvokeBKMEvent event) {}
+
+    default void afterInvokeBKM(AfterInvokeBKMEvent event) {}
+
+    default void beforeEvaluateAll(BeforeEvaluateAllEvent event) {}
+
+    default void afterEvaluateAll(AfterEvaluateAllEvent event) {}
 }

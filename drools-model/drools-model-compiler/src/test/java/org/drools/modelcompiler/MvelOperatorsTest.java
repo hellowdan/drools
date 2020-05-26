@@ -17,6 +17,7 @@
 package org.drools.modelcompiler;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 
 import org.assertj.core.api.Assertions;
@@ -305,6 +306,104 @@ public class MvelOperatorsTest extends BaseModelTest {
 
         Person first = new Person("686878");
         ksession.insert(first);
-        Assertions.assertThat(ksession.fireAllRules()).isEqualTo(1);;
+        Assertions.assertThat(ksession.fireAllRules()).isEqualTo(1);
+    }
+
+    public static class DoubleFact {
+
+        private double primitiveDoubleVal;
+        private Double doubleVal;
+
+        public double getPrimitiveDoubleVal() {
+            return primitiveDoubleVal;
+        }
+        public void setPrimitiveDoubleVal(double primitiveDoubleVal) {
+            this.primitiveDoubleVal = primitiveDoubleVal;
+        }
+        public Double getDoubleVal() {
+            return doubleVal;
+        }
+        public void setDoubleVal(Double doubleVal) {
+            this.doubleVal = doubleVal;
+        }
+
+        @Override
+        public String toString() {
+            return "DoubleFact [primitiveDoubleVal=" + primitiveDoubleVal + ", doubleVal=" + doubleVal + "]";
+        }
+    }
+
+    @Test
+    public void testInDouble() {
+        // DROOLS-4892
+        String str =
+                "import " + DoubleFact.class.getCanonicalName() + ";" +
+                "rule \"Double nnn\" when\n" +
+                "	f : DoubleFact( doubleVal in ( 100, 200, 300 ) )\n" +
+                "then\n" +
+                "	System.out.println(\"Rule[\"+kcontext.getRule().getName()+\"] fires.\");\n" +
+                "end\n" +
+                "\n" +
+                "rule \"Double nnn.n\" when\n" +
+                "    f : DoubleFact( doubleVal in ( 100.0, 200.0, 300.0) )\n" +
+                "then\n" +
+                "	 System.out.println(\"Rule[\"+kcontext.getRule().getName()+\"] fires.\");\n" +
+                "end\n" +
+                "\n" +
+                "rule \"double nnn\" when\n" +
+                "    f : DoubleFact( primitiveDoubleVal in ( 100, 200, 300) ) \n" +
+                "then \n" +
+                "	 System.out.println(\"Rule[\"+kcontext.getRule().getName()+\"] fires.\");\n" +
+                "end\n" +
+                "\n" +
+                "rule \"double nnn.n\" when\n" +
+                "    f : DoubleFact( primitiveDoubleVal in ( 100.0, 200.0, 300.0) )\n" +
+                "then\n" +
+                "    System.out.println(\"Rule[\"+kcontext.getRule().getName()+\"] fires.\");\n" +
+                "end";
+
+        KieSession ksession = getKieSession(str);
+
+        DoubleFact f = new DoubleFact();
+        f.setDoubleVal(new Double(100));
+        f.setPrimitiveDoubleVal(200);
+        ksession.insert(f);
+        assertEquals(4, ksession.fireAllRules());
+        ksession.dispose();
+    }
+
+    public static class ListContainer {
+        private final List<Integer> intList;
+
+        public ListContainer() {
+            this(null);
+        }
+
+        public ListContainer( List<Integer> intList ) {
+            this.intList = intList;
+        }
+
+        public List<Integer> getIntList() {
+            return intList;
+        }
+    }
+
+    @Test
+    public void testContainsOnNull() {
+        // DROOLS-5315
+        String str =
+                "import " + ListContainer.class.getCanonicalName() + ";" +
+                "rule R when\n" +
+                "    ListContainer(intList contains 3)" +
+                "then\n" +
+                "end ";
+
+        KieSession ksession = getKieSession(str);
+
+        ksession.insert( new ListContainer() );
+        assertEquals(0, ksession.fireAllRules());
+
+        ksession.insert( new ListContainer( Collections.singletonList( 3 ) ) );
+        assertEquals(1, ksession.fireAllRules());
     }
 }

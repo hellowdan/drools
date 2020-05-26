@@ -113,11 +113,11 @@ public class DMNModelImpl
 
     private void wireTypeRegistry(Definitions definitions) {
         if (definitions instanceof org.kie.dmn.model.v1_1.TDefinitions) {
-            types = new DMNTypeRegistryV11();
+            types = new DMNTypeRegistryV11(Collections.unmodifiableMap(importAliases));
         } else if (definitions instanceof org.kie.dmn.model.v1_2.TDefinitions) {
-            types = new DMNTypeRegistryV12();
+            types = new DMNTypeRegistryV12(Collections.unmodifiableMap(importAliases));
         } else {
-            types = new DMNTypeRegistryV13();
+            types = new DMNTypeRegistryV13(Collections.unmodifiableMap(importAliases));
         }
     }
     
@@ -488,6 +488,10 @@ public class DMNModelImpl
         return this.importChain.getImportChainAliases();
     }
 
+    public List<DMNModel> getImportChainDirectChildModels() {
+        return this.importChain.getImportChainDirectChildModels();
+    }
+
     private static class ImportChain {
         private final String alias;
         private final DMNModel node;
@@ -533,6 +537,13 @@ public class DMNModelImpl
                 allPrefixesUnderMyNamespace.add(Arrays.asList(alias));
             }
             return result;
+        }
+
+        /**
+         * return the list of child models not including transitive ones.
+         */
+        public List<DMNModel> getImportChainDirectChildModels() {
+            return children.stream().map(chain -> chain.node).collect(Collectors.toList());
         }
     }
 

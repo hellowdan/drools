@@ -22,14 +22,21 @@ import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.stream.Collectors;
 
 import com.github.javaparser.ast.CompilationUnit;
 import com.github.javaparser.ast.body.ClassOrInterfaceDeclaration;
+import com.github.javaparser.ast.expr.LambdaExpr;
 import com.github.javaparser.printer.PrettyPrinter;
+import org.drools.modelcompiler.util.lambdareplace.ExecModelLambdaPostProcessor;
+import org.drools.modelcompiler.util.lambdareplace.NonExternalisedLambdaFoundException;
 
 import static org.drools.modelcompiler.builder.JavaParserCompiler.getPrettyPrinter;
 
 public class RuleWriter {
+
+    public static final String DROOLS_CHECK_NON_EXTERNALISED_LAMBDA = "drools.check.nonExternalisedLambda";
+    private static final boolean CHECK_NON_EXTERNALISED_LAMBDA = Boolean.parseBoolean(System.getProperty(DROOLS_CHECK_NON_EXTERNALISED_LAMBDA, "false"));
 
     private final PrettyPrinter prettyPrinter = getPrettyPrinter();
 
@@ -69,10 +76,38 @@ public class RuleWriter {
 
                 String addFileName = classOptional.get().getNameAsString();
 
-                rules.add(new RuleFileSource(addFileName, cu));
+                if(pkgModel.getConfiguration().isExternaliseCanonicalModelLambda()) {
+                    CompilationUnit postProcessedCU = cu.clone();
+                    if (pkgModel.getRuleUnits().isEmpty()) {
+                        new ExecModelLambdaPostProcessor(
+                                pkgModel.getLambdaClasses(),
+                                pkgModel.getName(),
+                                pkgModel.getRulesFileNameWithPackage(),
+                                pkgModel.getImports(),
+                                pkgModel.getStaticImports(),
+                                postProcessedCU
+                        ).convertLambdas();
+                        if (CHECK_NON_EXTERNALISED_LAMBDA) {
+                            checkNonExternalisedLambda(postProcessedCU);
+                        }
+                    }
+                    rules.add(new RuleFileSource(addFileName, postProcessedCU));
+                } else {
+                    rules.add(new RuleFileSource(addFileName, cu));
+                }
             }
         }
         return rules;
+    }
+
+    private void checkNonExternalisedLambda(CompilationUnit postProcessedCU) {
+        List<LambdaExpr> lambdaExprs = postProcessedCU.findAll(LambdaExpr.class).stream().collect(Collectors.toList());
+        if (lambdaExprs.isEmpty()) {
+            return;
+        }
+        StringBuilder sb = new StringBuilder();
+        lambdaExprs.stream().forEach(lExpr -> sb.append(lExpr.toString() + "\n"));
+        throw new NonExternalisedLambdaFoundException("Non externalised lambda found in " + rulesFileName + "\n" + sb.toString());
     }
 
     public class RuleFileSource {

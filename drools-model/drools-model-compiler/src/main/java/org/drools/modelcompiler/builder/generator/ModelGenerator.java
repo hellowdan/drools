@@ -16,8 +16,6 @@
 
 package org.drools.modelcompiler.builder.generator;
 
-import java.lang.reflect.Method;
-import java.lang.reflect.ParameterizedType;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -66,10 +64,12 @@ import org.drools.modelcompiler.builder.generator.expressiontyper.ExpressionType
 import org.drools.modelcompiler.builder.generator.expressiontyper.ExpressionTyperContext;
 import org.drools.modelcompiler.builder.generator.visitor.ModelGeneratorVisitor;
 import org.drools.core.addon.TypeResolver;
+import org.kie.internal.ruleunit.RuleUnitVariable;
 
 import static java.util.stream.Collectors.toList;
 import static com.github.javaparser.StaticJavaParser.parseExpression;
 import static org.drools.core.impl.StatefulKnowledgeSessionImpl.DEFAULT_RULE_UNIT;
+import static org.drools.modelcompiler.builder.generator.DrlxParseUtil.classNameToReferenceType;
 import static org.kie.internal.ruleunit.RuleUnitUtil.isLegacyRuleUnit;
 import static org.drools.modelcompiler.builder.PackageModel.DATE_TIME_FORMATTER_FIELD;
 import static org.drools.modelcompiler.builder.PackageModel.DOMAIN_CLASSESS_METADATA_FILE_NAME;
@@ -88,7 +88,6 @@ import static org.drools.modelcompiler.builder.generator.DslMethodNames.UNIT_CAL
 import static org.drools.modelcompiler.builder.generator.DslMethodNames.UNIT_DATA_CALL;
 import static org.drools.modelcompiler.builder.generator.DslMethodNames.WINDOW_CALL;
 import static org.drools.modelcompiler.util.ClassUtil.asJavaSourceName;
-import static org.drools.modelcompiler.util.ClassUtil.toRawClass;
 import static org.drools.modelcompiler.util.StringUtil.toId;
 
 public class ModelGenerator {
@@ -164,7 +163,7 @@ public class ModelGenerator {
         }
 
         for (RuleUnitDescription rud : ruleUnitDescriptions) {
-            packageModel.addRuleUnit(rud.getRuleUnitClass());
+            packageModel.addRuleUnit(rud);
         }
     }
 
@@ -199,7 +198,7 @@ public class ModelGenerator {
         ruleCall.addArgument( new StringLiteralExpr( ruleDescr.getName() ) );
 
         MethodCallExpr buildCallScope = ruleUnitDescr != null ?
-                new MethodCallExpr(ruleCall, UNIT_CALL).addArgument( new ClassExpr( classToReferenceType(ruleUnitDescr.getRuleUnitClass()) ) ) :
+                new MethodCallExpr(ruleCall, UNIT_CALL).addArgument( new ClassExpr( classNameToReferenceType(ruleUnitDescr.getCanonicalName()) ) ) :
                 ruleCall;
 
         for (MethodCallExpr attributeExpr : ruleAttributes(context, ruleDescr)) {
@@ -223,7 +222,7 @@ public class ModelGenerator {
         ruleVariablesBlock.addStatement(new AssignExpr(ruleVar, buildCall, AssignExpr.Operator.ASSIGN));
 
         ruleVariablesBlock.addStatement( new ReturnStmt("rule") );
-        packageModel.putRuleMethod(ruleUnitDescr != null ? ruleUnitDescr.getRuleUnitClass().getSimpleName() : DEFAULT_RULE_UNIT, ruleMethod);
+        packageModel.putRuleMethod(ruleUnitDescr != null ? ruleUnitDescr.getSimpleName() : DEFAULT_RULE_UNIT, ruleMethod);
     }
 
     private static AndDescr getExtendedLhs(PackageDescr packageDescr, RuleDescr ruleDescr) {
@@ -307,7 +306,7 @@ public class ModelGenerator {
         Expression salienceExpr = parseExpression( value );
         Optional<TypedExpression> typedExpression = expressionTyper.toTypedExpression(salienceExpr).getTypedExpression();
         if (typedExpression.isPresent()) {
-            Expression lambda = generateLambdaWithoutParameters(expressionTyperContext.getUsedDeclarations(), typedExpression.get().getExpression(), true);
+            Expression lambda = generateLambdaWithoutParameters(expressionTyperContext.getUsedDeclarations(), typedExpression.get().getExpression(), true, Optional.empty());
             MethodCallExpr supplyCall = new MethodCallExpr(null, SUPPLY_CALL);
             expressionTyperContext.getUsedDeclarations().stream()
                     .map(context::getVarExpr)
@@ -393,39 +392,28 @@ public class ModelGenerator {
 
     private static void createUnitData(RuleContext context, RuleUnitDescription ruleUnitDescr, BlockStmt ruleVariablesBlock ) {
         if (ruleUnitDescr != null) {
-            for (Map.Entry<String, Method> unitVar : ruleUnitDescr.getUnitVarAccessors().entrySet()) {
-                addUnitData(context, unitVar.getKey(), unitVar.getValue().getGenericReturnType(), ruleVariablesBlock);
+            for (RuleUnitVariable unitVar : ruleUnitDescr.getUnitVarDeclarations()) {
+                addUnitData(context, unitVar, ruleVariablesBlock);
             }
         }
     }
 
-    private static void addUnitData(RuleContext context, String unitVar, java.lang.reflect.Type type, BlockStmt ruleBlock) {
-        Class<?> rawClass = toRawClass(type);
-        Type declType = classToReferenceType( toRawClass(type) );
-
-        context.addRuleUnitVar( unitVar, getClassForUnitData( type, rawClass ) );
+  private static void addUnitData(RuleContext context, RuleUnitVariable unitVar, BlockStmt ruleBlock) {
+        Type declType = classToReferenceType(unitVar.getBoxedVarType());
+        context.addRuleUnitVar( unitVar.getName(), unitVar.getDataSourceParameterType() );
+        context.addRuleUnitVarOriginalType( unitVar.getName(), unitVar.getType() );
 
         ClassOrInterfaceType varType = toClassOrInterfaceType(UnitData.class);
         varType.setTypeArguments(declType);
-        VariableDeclarationExpr var_ = new VariableDeclarationExpr(varType, context.getVar(unitVar), Modifier.finalModifier());
+        VariableDeclarationExpr var_ = new VariableDeclarationExpr(varType, context.getVar(unitVar.getName()), Modifier.finalModifier());
 
         MethodCallExpr unitDataCall = new MethodCallExpr(null, UNIT_DATA_CALL);
 
         unitDataCall.addArgument(new ClassExpr( declType ));
-        unitDataCall.addArgument(new StringLiteralExpr(unitVar));
+        unitDataCall.addArgument(new StringLiteralExpr(unitVar.getName()));
 
         AssignExpr var_assign = new AssignExpr(var_, unitDataCall, AssignExpr.Operator.ASSIGN);
         ruleBlock.addStatement(var_assign);
-    }
-
-    private static Class<?> getClassForUnitData( java.lang.reflect.Type type, Class<?> rawClass ) {
-        if (Iterable.class.isAssignableFrom( rawClass ) && type instanceof ParameterizedType) {
-            return toRawClass( (( ParameterizedType ) type).getActualTypeArguments()[0] );
-        }
-        if (rawClass.isArray()) {
-            return rawClass.getComponentType();
-        }
-        return rawClass;
     }
 
     public static void createVariables(KnowledgeBuilderImpl kbuilder, BlockStmt block, PackageModel packageModel, RuleContext context) {

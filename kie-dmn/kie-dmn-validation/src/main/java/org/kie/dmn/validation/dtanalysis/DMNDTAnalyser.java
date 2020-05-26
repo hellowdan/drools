@@ -22,6 +22,7 @@ import java.util.BitSet;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
@@ -36,6 +37,7 @@ import org.kie.dmn.core.util.Msg;
 import org.kie.dmn.core.util.MsgUtil;
 import org.kie.dmn.feel.codegen.feel11.ProcessedExpression;
 import org.kie.dmn.feel.codegen.feel11.ProcessedUnaryTest;
+import org.kie.dmn.feel.lang.SimpleType;
 import org.kie.dmn.feel.lang.ast.BaseNode;
 import org.kie.dmn.feel.lang.ast.DashNode;
 import org.kie.dmn.feel.lang.ast.NullNode;
@@ -93,7 +95,7 @@ public class DMNDTAnalyser {
                 DTAnalysis result = dmnDTAnalysis(model, dt);
                 results.add(result);
             } catch (Throwable t) {
-                LOG.debug("Skipped dmnDTAnalysis for table: " + dt.getId(), t);
+                LOG.debug("Skipped dmnDTAnalysis for table: {}", dt.getId(), t);
                 DTAnalysis result = DTAnalysis.ofError(dt, t);
                 results.add(result);
             }
@@ -107,13 +109,21 @@ public class DMNDTAnalyser {
         compileTableInputClauses(model, dt, ddtaTable);
         compileTableOutputClauses(model, dt, ddtaTable);
         compileTableRules(dt, ddtaTable);
+        compileTableComputeColStringMissingEnum(model, dt, ddtaTable);
         printDebugTableInfo(ddtaTable);
         DTAnalysis analysis = new DTAnalysis(dt, ddtaTable);
+        analysis.computeOutputInLOV();
         if (!dt.getHitPolicy().equals(HitPolicy.COLLECT)) {
-            LOG.debug("findGaps");
-            findGaps(analysis, ddtaTable, 0, new Interval[ddtaTable.inputCols()], Collections.emptyList());
+            if (ddtaTable.getColIDsStringWithoutEnum().isEmpty()) {
+                LOG.debug("findGaps");
+                findGaps(analysis, ddtaTable, 0, new Interval[ddtaTable.inputCols()], Collections.emptyList());
+            } else {
+                LOG.debug("findGaps Skipped because getColIDsStringWithoutEnum is not empty: {}", ddtaTable.getColIDsStringWithoutEnum());
+            }
             LOG.debug("findOverlaps");
             findOverlaps(analysis, ddtaTable, 0, new Interval[ddtaTable.inputCols()], Collections.emptyList());
+        } else {
+            LOG.debug("findGaps(), findOverlaps() are Skipped because getHitPolicy is COLLECT.");
         }
         LOG.debug("computeMaskedRules");
         analysis.computeMaskedRules();
@@ -129,7 +139,29 @@ public class DMNDTAnalyser {
         analysis.compute1stNFViolations();
         LOG.debug("compute2ndNFViolations");
         analysis.compute2ndNFViolations();
+        LOG.debug("computeHitPolicyRecommender");
+        analysis.computeHitPolicyRecommender();
         return analysis;
+    }
+
+    private void compileTableComputeColStringMissingEnum(DMNModel model, DecisionTable dt, DDTATable ddtaTable) {
+        for (int iColIdx = 0; iColIdx < ddtaTable.inputCols(); iColIdx++) {
+            InputClause ie = dt.getInput().get(iColIdx);
+            QName typeRef = DMNCompilerImpl.getNamespaceAndName(dt, ((DMNModelImpl) model).getImportAliasesForNS(), ie.getInputExpression().getTypeRef(), model.getNamespace());
+            if (SimpleType.STRING.equals(typeRef.getLocalPart()) && !ddtaTable.getInputs().get(iColIdx).isDiscreteDomain()) {
+                Interval infStringDomain = ddtaTable.getInputs().get(iColIdx).getDomainMinMax();
+                boolean areAllSinglePointOrAll = true;
+                for (int jRowIdx = 0; jRowIdx < dt.getRule().size() && areAllSinglePointOrAll; jRowIdx++) {
+                    List<Interval> r = ddtaTable.getRule().get(jRowIdx).getInputEntry().get(iColIdx).getIntervals();
+                    for (Interval interval : r) {
+                        areAllSinglePointOrAll = areAllSinglePointOrAll && (infStringDomain.equals(interval) || interval.isSingularity());
+                    }
+                }
+                if (areAllSinglePointOrAll) {
+                    ddtaTable.addColIdStringWithoutEnum(iColIdx + 1);
+                }
+            }
+        }
     }
 
     private void printDebugTableInfo(DDTATable ddtaTable) {
@@ -145,6 +177,7 @@ public class DMNDTAnalyser {
                 Collections.sort(bounds);
                 LOG.debug("{}", bounds);
             }
+            LOG.debug("col IDs being String without Enum: {}", ddtaTable.getColIDsStringWithoutEnum());
         }
     }
 
@@ -297,7 +330,13 @@ public class DMNDTAnalyser {
         } else if (typeRef.getNamespaceURI().equals(model.getDefinitions().getURIFEEL()) && typeRef.getLocalPart().equals("boolean")) {
             return "false, true";
         }
-        return null;
+
+        List<DMNModel> childModels = ((DMNModelImpl) model).getImportChainDirectChildModels();
+        return childModels.stream()
+                          .map(childModel -> findAllowedValues(childModel, typeRef))
+                          .filter(Objects::nonNull)
+                          .findFirst()
+                          .orElse(null);
     }
 
     private void findOverlaps(DTAnalysis analysis, DDTATable ddtaTable, int jColIdx, Interval[] currentIntervals, Collection<Integer> activeRules) {
@@ -445,6 +484,9 @@ public class DMNDTAnalyser {
 
     private List<Interval> toIntervals(List<BaseNode> elements, boolean isNegated, Interval minMax, List discreteValues, int rule, int col) {
         List<Interval> results = new ArrayList<>();
+        if (elements.size() == 1 && elements.get(0) instanceof UnaryTestNode && ((UnaryTestNode) elements.get(0)).getValue() instanceof NullNode) {
+            return Collections.emptyList();
+        }
         if (discreteValues != null && !discreteValues.isEmpty() && areAllEQUnaryTest(elements) && elements.size() > 1) {
             int bitsetLogicalSize = discreteValues.size(); // JDK BitSet size will always be larger.
             BitSet hitValues = new BitSet(bitsetLogicalSize);
@@ -546,12 +588,28 @@ public class DMNDTAnalyser {
             return new Interval(RangeBoundary.CLOSED, valueFromNode(ut.getValue()), minMax.getUpperBound().getValue(), minMax.getUpperBound().getBoundaryType(), rule, col);
         } else if (ut.getValue() instanceof RangeNode) {
             RangeNode rangeNode = (RangeNode) ut.getValue();
-            return new Interval(rangeNode.getLowerBound() == IntervalBoundary.OPEN ? RangeBoundary.OPEN : RangeBoundary.CLOSED,
-                                valueFromNode(rangeNode.getStart()),
-                                valueFromNode(rangeNode.getEnd()),
-                                rangeNode.getUpperBound() == IntervalBoundary.OPEN ? RangeBoundary.OPEN : RangeBoundary.CLOSED,
-                                rule,
-                                col);
+            if (!(rangeNode.getStart() instanceof NullNode || rangeNode.getEnd() instanceof NullNode)) {
+                return new Interval(rangeNode.getLowerBound() == IntervalBoundary.OPEN ? RangeBoundary.OPEN : RangeBoundary.CLOSED,
+                                    valueFromNode(rangeNode.getStart()),
+                                    valueFromNode(rangeNode.getEnd()),
+                                    rangeNode.getUpperBound() == IntervalBoundary.OPEN ? RangeBoundary.OPEN : RangeBoundary.CLOSED,
+                                    rule,
+                                    col);
+            } else if (rangeNode.getStart() instanceof NullNode) {
+                return new Interval(minMax.getLowerBound().getBoundaryType(),
+                                    minMax.getLowerBound().getValue(),
+                                    valueFromNode(rangeNode.getEnd()),
+                                    rangeNode.getUpperBound() == IntervalBoundary.OPEN ? RangeBoundary.OPEN : RangeBoundary.CLOSED,
+                                    rule,
+                                    col);
+            } else {
+                return new Interval(rangeNode.getLowerBound() == IntervalBoundary.OPEN ? RangeBoundary.OPEN : RangeBoundary.CLOSED,
+                                    valueFromNode(rangeNode.getStart()),
+                                    minMax.getUpperBound().getValue(),
+                                    minMax.getUpperBound().getBoundaryType(),
+                                    rule,
+                                    col);
+            }
         } else {
             throw new UnsupportedOperationException("UnaryTest type: " + ut);
         }

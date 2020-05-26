@@ -6,7 +6,7 @@
   <parent>
     <groupId>org.drools</groupId>
     <artifactId>drools</artifactId>
-    <version>7.31.0-SNAPSHOT</version>
+    <version>7.39.0-SNAPSHOT</version>
   </parent>
 
   <artifactId>drools-core</artifactId>
@@ -58,7 +58,7 @@
     </dependency>
     <dependency>
       <groupId>org.kie.soup</groupId>
-      <artifactId>kie-soup-commons</artifactId>
+      <artifactId>kie-soup-xstream</artifactId>
     </dependency>
     <dependency>
       <groupId>org.drools</groupId>
@@ -68,6 +68,12 @@
       <groupId>org.drools</groupId>
       <artifactId>drools-core-dynamic</artifactId>
     </dependency>
+
+    <dependency>
+      <groupId>org.kie.soup</groupId>
+      <artifactId>kie-soup-project-datamodel-commons</artifactId>
+    </dependency>
+
     <dependency>
       <groupId>org.antlr</groupId>
       <artifactId>antlr-runtime</artifactId>

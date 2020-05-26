@@ -59,6 +59,7 @@ public class DMNFunctionWithReturnType extends BaseFEELFunction {
         Object result = wrapped.invokeReflectively(ctx, params);
         result = DMNRuntimeImpl.coerceUsingType(result,
                                                 returnType,
+                                                true, // this FN is created when typeCheck==true, hence here always true.
                                                 (r, t) -> MsgUtil.reportMessage(LOG,
                                                                                 DMNMessage.Severity.WARN,
                                                                                 node.getBusinessKnowledModel(),
@@ -78,8 +79,8 @@ public class DMNFunctionWithReturnType extends BaseFEELFunction {
     }
 
     @Override
-    public List<List<String>> getParameterNames() {
-        return wrapped.getParameterNames();
+    public List<List<Param>> getParameters() {
+        return wrapped.getParameters();
     }
 
     @Override

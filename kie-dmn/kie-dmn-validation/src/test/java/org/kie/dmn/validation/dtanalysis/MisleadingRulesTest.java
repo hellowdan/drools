@@ -66,12 +66,14 @@ public class MisleadingRulesTest extends AbstractDTAnalysisTest {
         // Assert OVERLAPs same values
         assertThat(analysis.getOverlaps(), contains(overlaps.toArray()));
 
-        // MaskedRules count.
+        // MisleadingRules count.
         assertThat(analysis.getMisleadingRules(), hasSize(1));
         List<MisleadingRule> misleadingRules = Arrays.asList(new MisleadingRule(4, 2));
         assertThat(misleadingRules, hasSize(1));
         assertThat(analysis.getMisleadingRules(), contains(misleadingRules.toArray()));
         assertTrue("It should contain at least 1 DMNMessage for the MisleadingRule",
                    validate.stream().anyMatch(p -> p.getMessageType().equals(DMNMessageType.DECISION_TABLE_MISLEADING_RULE)));
+        assertTrue("This test case is not a Masked rule example",
+                   validate.stream().noneMatch(p -> p.getMessageType().equals(DMNMessageType.DECISION_TABLE_MASKED_RULE)));
     }
 }

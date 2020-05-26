@@ -1,3 +1,20 @@
+/*
+ * Copyright 2019 Red Hat, Inc. and/or its affiliates.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ *
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
 package org.drools.modelcompiler.builder.generator;
 
 import java.lang.reflect.Field;
@@ -26,7 +43,6 @@ import java.util.stream.Stream;
 
 import com.github.javaparser.StaticJavaParser;
 import com.github.javaparser.ast.Node;
-import com.github.javaparser.ast.NodeList;
 import com.github.javaparser.ast.body.Parameter;
 import com.github.javaparser.ast.expr.ArrayAccessExpr;
 import com.github.javaparser.ast.expr.ArrayCreationExpr;
@@ -44,7 +60,6 @@ import com.github.javaparser.ast.expr.FieldAccessExpr;
 import com.github.javaparser.ast.expr.IntegerLiteralExpr;
 import com.github.javaparser.ast.expr.LambdaExpr;
 import com.github.javaparser.ast.expr.LiteralExpr;
-import com.github.javaparser.ast.expr.LiteralStringValueExpr;
 import com.github.javaparser.ast.expr.LongLiteralExpr;
 import com.github.javaparser.ast.expr.MethodCallExpr;
 import com.github.javaparser.ast.expr.NameExpr;
@@ -66,6 +81,7 @@ import com.github.javaparser.ast.type.Type;
 import com.github.javaparser.ast.type.UnknownType;
 import org.drools.compiler.lang.descr.AnnotationDescr;
 import org.drools.compiler.lang.descr.PatternDescr;
+import org.drools.core.addon.TypeResolver;
 import org.drools.core.util.ClassUtils;
 import org.drools.core.util.StringUtils;
 import org.drools.model.Index;
@@ -80,13 +96,13 @@ import org.drools.mvel.parser.ast.expr.HalfBinaryExpr;
 import org.drools.mvel.parser.ast.expr.MapCreationLiteralExpression;
 import org.drools.mvel.parser.ast.expr.NullSafeFieldAccessExpr;
 import org.drools.mvel.parser.printer.PrintUtil;
-import org.drools.core.addon.TypeResolver;
 
 import static java.util.Optional.of;
 import static java.util.stream.Collectors.toList;
 
 import static com.github.javaparser.StaticJavaParser.parseType;
 import static org.drools.modelcompiler.builder.generator.DslMethodNames.PATTERN_CALL;
+import static org.drools.modelcompiler.builder.generator.expression.PatternExpressionBuilder.BIND_CALL;
 import static org.drools.modelcompiler.builder.generator.expressiontyper.ExpressionTyper.findLeftLeafOfNameExpr;
 import static org.drools.modelcompiler.util.ClassUtil.findMethod;
 import static org.drools.modelcompiler.util.ClassUtil.toRawClass;
@@ -449,15 +465,18 @@ public class DrlxParseUtil {
     }
 
     public static Expression generateLambdaWithoutParameters(Collection<String> usedDeclarations, Expression expr) {
-        return generateLambdaWithoutParameters(usedDeclarations, expr, false);
+        return generateLambdaWithoutParameters(usedDeclarations, expr, false, Optional.empty());
     }
 
     public static Expression generateLambdaWithoutParameters(Expression expr) {
         Collection<String> usedDeclarations = expr.findAll( NameExpr.class ).stream().map( NameExpr::getName ).map( SimpleName::getIdentifier ).collect( toList() );
-        return generateLambdaWithoutParameters(usedDeclarations, expr, true);
+        return generateLambdaWithoutParameters(usedDeclarations, expr, true, Optional.empty());
     }
 
-    public static Expression generateLambdaWithoutParameters(Collection<String> usedDeclarations, Expression expr, boolean skipFirstParamAsThis) {
+    public static Expression generateLambdaWithoutParameters(Collection<String> usedDeclarations,
+                                                             Expression expr,
+                                                             boolean skipFirstParamAsThis,
+                                                             Optional<Class<?>> patternClass) {
         DrlxParseUtil.transformDrlNameExprToNameExpr(expr);
         if (skipFirstParamAsThis && usedDeclarations.isEmpty()) {
             return expr;
@@ -465,7 +484,13 @@ public class DrlxParseUtil {
         LambdaExpr lambdaExpr = new LambdaExpr();
         lambdaExpr.setEnclosingParameters( true );
         if (!skipFirstParamAsThis) {
-            lambdaExpr.addParameter(new Parameter(new UnknownType(), THIS_PLACEHOLDER));
+            Type type;
+            if(patternClass.isPresent() && usedDeclarations.isEmpty() && patternClass.filter(c -> !Object.class.equals(c)).isPresent()) {
+                type = StaticJavaParser.parseClassOrInterfaceType(patternClass.get().getCanonicalName());
+            } else {
+                type = new UnknownType();
+            }
+            lambdaExpr.addParameter(new Parameter(type, THIS_PLACEHOLDER));
         }
         usedDeclarations.stream().map( s -> new Parameter( new UnknownType(), s ) ).forEach( lambdaExpr::addParameter );
         lambdaExpr.setBody( new ExpressionStmt(expr) );
@@ -559,7 +584,12 @@ public class DrlxParseUtil {
     }
 
     public static Type classToReferenceType(Class<?> declClass) {
-        Type parsedType = parseType(declClass.getCanonicalName());
+        String className = declClass.getCanonicalName();
+        return classNameToReferenceType(className);
+    }
+
+    public static Type classNameToReferenceType(String className) {
+        Type parsedType = parseType(className);
         return parsedType instanceof PrimitiveType ?
                 ((PrimitiveType) parsedType).toBoxedType() :
                 parsedType;
@@ -708,18 +738,6 @@ public class DrlxParseUtil {
                         .collect( toList() );
     }
 
-    public static Optional<MethodCallExpr> findPatternWithBinding(RuleContext context, Collection<String> patternBindings, List<Expression> expressions) {
-        return expressions.stream().flatMap((Expression e) -> {
-            final Optional<MethodCallExpr> pattern = e.findFirst(MethodCallExpr.class, expr -> {
-                boolean isPatternExpr = expr.getName().asString().equals(PATTERN_CALL);
-                List<Expression> bindingExprsVars = patternBindings.stream().map(context::getVarExpr).collect(Collectors.toList());
-                boolean hasBindingHasArgument = !Collections.disjoint(bindingExprsVars, expr.getArguments());
-                return isPatternExpr && hasBindingHasArgument;
-            });
-            return pattern.map(Stream::of).orElse(Stream.empty());
-        }).findFirst();
-    }
-
     public static Optional<MethodCallExpr> findLastPattern(List<Expression> expressions) {
         final Stream<MethodCallExpr> patterns = expressions.stream().flatMap((Expression e) -> {
             final List<MethodCallExpr> pattern = e.findAll(MethodCallExpr.class, expr -> expr.getName().asString().equals(PATTERN_CALL));
@@ -791,34 +809,20 @@ public class DrlxParseUtil {
         }
     }
 
-    public static MethodCallExpr sanitizeDrlNameExpr(MethodCallExpr me) {
-        NodeList<Expression> arguments = NodeList.nodeList();
-        for(Expression e : me.getArguments()) {
-            arguments.add(sanitizeExpr(e, me));
-        }
-        me.getScope().map((Expression e) -> sanitizeExpr(e, me)).ifPresent(me::setScope);
-
-        me.setArguments(arguments);
-        return me;
-    }
-
-    private static Expression sanitizeExpr(Expression e, Expression parent) {
-        Expression sanitized;
-        if (e instanceof DrlNameExpr) {
-            sanitized = new NameExpr(PrintUtil.printConstraint(e));
-            sanitized.setParentNode(parent);
-        } else {
-            sanitized = e;
-        }
-        return sanitized;
-    }
-
     public static String addCurlyBracesToBlock(String blockString) {
-        return String.format("{%s}", blockString);
+        return String.format("{\n%s\n}", blockString);
     }
 
     public static String addSemicolon(String block) {
         return block.endsWith(";") ? block : block + ";";
+    }
+
+    public static Expression uncastExpr(Expression e) {
+        if(e.isCastExpr()) {
+            return e.asCastExpr().getExpression();
+        } else {
+            return e;
+        }
     }
 
     private DrlxParseUtil() {

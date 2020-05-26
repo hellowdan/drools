@@ -16,15 +16,17 @@
 
 package org.drools.scenariosimulation.backend.util;
 
+import org.drools.scenariosimulation.backend.runner.ScenarioException;
+import org.drools.scenariosimulation.backend.runner.model.ValueWrapper;
+
 import java.lang.reflect.Field;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 
-import org.drools.scenariosimulation.backend.runner.ScenarioException;
+import static org.drools.scenariosimulation.backend.runner.model.ValueWrapper.errorEmptyMessage;
 
 public class ScenarioBeanUtil {
 
@@ -45,18 +47,18 @@ public class ScenarioBeanUtil {
     }
 
     public static <T> T fillBean(String className, Map<List<String>, Object> params, ClassLoader classLoader) {
-        return fillBean(Optional.empty(), className, params, classLoader);
+        return fillBean(errorEmptyMessage(), className, params, classLoader);
     }
 
     @SuppressWarnings("unchecked")
-    public static <T> T fillBean(Optional<Object> initialInstance, String className, Map<List<String>, Object> params, ClassLoader classLoader) {
+    public static <T> T fillBean(ValueWrapper<Object> initialInstance, String className, Map<List<String>, Object> params, ClassLoader classLoader) {
 
         T beanToFill = (T) initialInstance.orElseGet(() -> newInstance(loadClass(className, classLoader)));
 
         for (Map.Entry<List<String>, Object> param : params.entrySet()) {
 
             // direct mapping already considered
-            if(param.getKey().isEmpty()) {
+            if (param.getKey().isEmpty()) {
                 continue;
             }
 
@@ -201,7 +203,7 @@ public class ScenarioBeanUtil {
         } else if (clazz.isAssignableFrom(Long.class) || clazz.isAssignableFrom(long.class)) {
             return Long.toString((Long) cleanValue);
         } else if (clazz.isAssignableFrom(Double.class) || clazz.isAssignableFrom(double.class)) {
-            return cleanValue + "d";
+            return revertDouble((Double) cleanValue);
         } else if (clazz.isAssignableFrom(Float.class) || clazz.isAssignableFrom(float.class)) {
             return cleanValue + "f";
         } else if (clazz.isAssignableFrom(Character.class) || clazz.isAssignableFrom(char.class)) {
@@ -276,5 +278,12 @@ public class ScenarioBeanUtil {
 
     private static String cleanStringForNumberParsing(String rawValue) {
         return rawValue.replaceAll("(-)\\s*([0-9])", "$1$2");
+    }
+
+    private static String revertDouble(Double doubleValue) {
+        if (Double.isInfinite(doubleValue) || Double.isNaN(doubleValue)) {
+            return String.valueOf(doubleValue);
+        }
+        return doubleValue + "d";
     }
 }

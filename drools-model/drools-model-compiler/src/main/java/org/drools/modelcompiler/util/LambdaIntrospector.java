@@ -19,6 +19,7 @@ package org.drools.modelcompiler.util;
 import java.io.InputStream;
 import java.io.Serializable;
 import java.lang.invoke.SerializedLambda;
+import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
@@ -34,7 +35,9 @@ import org.mvel2.asm.Opcodes;
 
 public class LambdaIntrospector implements LambdaPrinter {
 
-    private static final int CACHE_SIZE = 32;
+    public static final String LAMBDA_INTROSPECTOR_CACHE_SIZE = "drools.lambda.introspector.cache.size";
+
+    private static final int CACHE_SIZE = Integer.parseInt(System.getProperty(LAMBDA_INTROSPECTOR_CACHE_SIZE, "32"));
 
     private static final Map<ClassIdentifier, Map<String, String>> methodFingerprintsMap = new LinkedHashMap() {
         @Override
@@ -45,6 +48,10 @@ public class LambdaIntrospector implements LambdaPrinter {
 
     @Override
     public String getLambdaFingerprint(Object lambda) {
+        if(lambda.toString().equals("INSTANCE")) { // Materialized lambda
+            return getExpressionHash(lambda);
+        }
+
         if (lambda instanceof IntrospectableLambda ) {
             lambda = (( IntrospectableLambda ) lambda).getLambda();
         }
@@ -59,6 +66,16 @@ public class LambdaIntrospector implements LambdaPrinter {
             }
         }
         return result;
+    }
+
+    private String getExpressionHash(Object lambda) {
+        Field expressionHash;
+        try {
+            expressionHash = lambda.getClass().getDeclaredField("EXPRESSION_HASH");
+            return (String) expressionHash.get(lambda);
+        } catch (NoSuchFieldException | SecurityException | IllegalArgumentException | IllegalAccessException e) {
+            throw new RuntimeException( e );
+        }
     }
 
     private static SerializedLambda extractLambda( Serializable lambda ) {

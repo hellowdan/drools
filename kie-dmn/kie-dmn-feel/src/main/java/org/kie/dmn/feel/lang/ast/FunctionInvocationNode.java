@@ -26,7 +26,9 @@ import org.kie.dmn.api.feel.runtime.events.FEELEvent.Severity;
 import org.kie.dmn.feel.lang.EvaluationContext;
 import org.kie.dmn.feel.lang.Type;
 import org.kie.dmn.feel.runtime.FEELFunction;
+import org.kie.dmn.feel.runtime.Range;
 import org.kie.dmn.feel.runtime.UnaryTest;
+import org.kie.dmn.feel.runtime.functions.AbstractCustomFEELFunction;
 import org.kie.dmn.feel.util.Msg;
 
 public class FunctionInvocationNode
@@ -72,6 +74,8 @@ public class FunctionInvocationNode
         } else if (name instanceof PathExpressionNode) {
             PathExpressionNode pathExpressionNode = (PathExpressionNode) name;
             value = pathExpressionNode.evaluate(ctx);
+        } else {
+            value = name.evaluate(ctx);
         }
         if ( value instanceof FEELFunction ) {
             function = (FEELFunction) value;
@@ -95,14 +99,26 @@ public class FunctionInvocationNode
             } else {
                 ctx.notifyEvt( astEvent(Severity.ERROR, Msg.createMessage(Msg.CAN_T_INVOKE_AN_UNARY_TEST_WITH_S_PARAMETERS_UNARY_TESTS_REQUIRE_1_SINGLE_PARAMETER, params.getElements().size()) ) );
             }
+        } else if (value instanceof Range) {
+            if (params.getElements().size() == 1) {
+                Object p = params.getElements().get(0).evaluate(ctx);
+                return ((Range) value).includes(p);
+            } else {
+                ctx.notifyEvt(astEvent(Severity.ERROR, Msg.createMessage(Msg.CAN_T_INVOKE_AN_UNARY_TEST_WITH_S_PARAMETERS_UNARY_TESTS_REQUIRE_1_SINGLE_PARAMETER, params.getElements().size())));
+            }
         }
         return null;
     }
 
     private Object invokeTheFunction(List<String> names, FEELFunction fn, EvaluationContext ctx, Object[] params) {
-        if (names.size() == 1) {
-            Object result = fn.invokeReflectively(ctx, params);
-            return result;
+        if (names.size() == 1 || names.isEmpty()) {
+            if (fn instanceof AbstractCustomFEELFunction<?>) {
+                AbstractCustomFEELFunction<?> ff = (AbstractCustomFEELFunction<?>) fn;
+                if (ff.isProperClosure()) {
+                    return ff.invokeReflectively(ff.getEvaluationContext(), params);
+                }
+            }
+            return fn.invokeReflectively(ctx, params);
         } else {
             try {
                 Object newRoot = ctx.getValue(names.get(0));

@@ -16,6 +16,8 @@
 
 package org.kie.dmn.core;
 
+import java.util.Arrays;
+
 import org.hamcrest.Matchers;
 import org.junit.Test;
 import org.kie.dmn.api.core.DMNContext;
@@ -26,7 +28,9 @@ import org.kie.dmn.api.core.DMNRuntime;
 import org.kie.dmn.api.core.DMNType;
 import org.kie.dmn.api.core.ast.ItemDefNode;
 import org.kie.dmn.core.api.DMNFactory;
+import org.kie.dmn.core.compiler.DMNTypeRegistry;
 import org.kie.dmn.core.impl.CompositeTypeImpl;
+import org.kie.dmn.core.impl.DMNModelImpl;
 import org.kie.dmn.core.impl.SimpleTypeImpl;
 import org.kie.dmn.core.util.DMNRuntimeUtil;
 import org.kie.dmn.feel.lang.EvaluationContext;
@@ -41,22 +45,115 @@ import static org.hamcrest.CoreMatchers.instanceOf;
 import static org.hamcrest.CoreMatchers.is;
 import static org.hamcrest.CoreMatchers.notNullValue;
 import static org.hamcrest.CoreMatchers.nullValue;
+import static org.hamcrest.Matchers.hasSize;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertThat;
+import static org.junit.Assert.fail;
 import static org.kie.dmn.core.util.DynamicTypeUtils.entry;
 import static org.kie.dmn.core.util.DynamicTypeUtils.mapOf;
 
-public class DMNCompilerTest extends BaseInterpretedVsCompiledTest {
+public class DMNCompilerTest extends BaseVariantTest {
 
     public static final Logger LOG = LoggerFactory.getLogger(DMNCompilerTest.class);
 
-    public DMNCompilerTest(final boolean useExecModelCompiler) {
-        super(useExecModelCompiler);
+    public DMNCompilerTest(VariantTestConf testConfig) {
+        super(testConfig);
+    }
+
+    @Test
+    public void testJavadocSimple() {
+        final DMNRuntime runtime = createRuntime("javadocSimple.dmn", this.getClass());
+        final DMNModel dmnModel = runtime.getModel("https://kiegroup.org/dmn/_55F8F74F-3E9F-4FAA-BBF4-E6F9534B6B19", "new-file");
+        assertThat(dmnModel, notNullValue());
+
+        final DMNType tVowel = dmnModel.getItemDefinitionByName("tVowel").getType();
+        assertThat(tVowel, is(notNullValue()));
+        assertThat(tVowel.isComposite(), is(false));
+        assertThat(tVowel, is(instanceOf(SimpleTypeImpl.class)));
+        assertThat(tVowel.getBaseType(), notNullValue());
+        assertThat(tVowel.getFields().size(), is(0));
+
+        final DMNType tNumbers = dmnModel.getItemDefinitionByName("tNumbers").getType();
+        assertThat(tNumbers, is(notNullValue()));
+        assertThat(tNumbers.isComposite(), is(false));
+        assertThat(tNumbers, is(instanceOf(SimpleTypeImpl.class)));
+        assertThat(tNumbers.getBaseType(), notNullValue());
+        assertThat(tNumbers.getFields().size(), is(0));
+
+        final DMNContext context = runtime.newContext();
+        context.set("a vowel", "a");
+        context.set("a list", Arrays.asList(1, 2, 3));
+        context.set("vowels", Arrays.asList("a", "a", "e"));
+
+        final DMNResult evaluateAll = evaluateModel(runtime, dmnModel, context);
+        LOG.debug("{}", evaluateAll);
+        assertThat(evaluateAll.hasErrors(), is(false));
+    }
+
+    @Test
+    public void testJavadocComposite() {
+        final DMNRuntime runtime = createRuntime("javadocComposite.dmn", this.getClass());
+        final DMNModel dmnModel = runtime.getModel("https://kiegroup.org/dmn/_7EC096B1-878B-4E85-8334-58B440BB6AD9", "new-file");
+        assertThat(dmnModel, notNullValue());
+
+        final DMNType tPerson = dmnModel.getItemDefinitionByName("tPerson").getType();
+        assertThat(tPerson, is(notNullValue()));
+        assertThat(tPerson.isComposite(), is(true));
+        assertThat(tPerson, is(instanceOf(CompositeTypeImpl.class)));
+        assertThat(tPerson.getBaseType(), nullValue());
+        assertThat(tPerson.getFields().size(), is(2));
+
+        final DMNContext context = runtime.newContext();
+        context.set("a person", mapOf(entry("full name", "John Doe"), entry("age", 47)));
+
+        final DMNResult evaluateAll = evaluateModel(runtime, dmnModel, context);
+        LOG.debug("{}", evaluateAll);
+        assertThat(DMNRuntimeUtil.formatMessages(evaluateAll.getMessages()), evaluateAll.hasErrors(), is(false));
+    }
+
+    @Test
+    public void testJavadocInnerComposite() {
+        final DMNRuntime runtime = createRuntime("javadocInnerComposite.dmn", this.getClass());
+        final DMNModel dmnModel = runtime.getModel("https://kiegroup.org/dmn/_7EC096B1-878B-4E85-8334-58B440BB6AD9bis", "new-file");
+        assertThat(dmnModel, notNullValue());
+        
+        DMNTypeRegistry typeRegistry = ((DMNModelImpl) dmnModel).getTypeRegistry();
+
+        final DMNType tPerson = dmnModel.getItemDefinitionByName("tPerson").getType();
+        assertThat(tPerson, is(notNullValue()));
+        assertThat(tPerson.isComposite(), is(true));
+        assertThat(tPerson, is(instanceOf(CompositeTypeImpl.class)));
+        assertThat(tPerson.getBaseType(), nullValue());
+        assertThat(tPerson.getFields().size(), is(2));
+        assertThat(typeRegistry.resolveType(tPerson.getNamespace(), tPerson.getName()), notNullValue());
+        final DMNType addressType = tPerson.getFields().get("address");
+        assertThat(addressType, is(instanceOf(CompositeTypeImpl.class)));
+        assertThat(addressType.getName(), is("address"));
+        assertThat(addressType.getFields().size(), is(2));
+        assertThat(typeRegistry.resolveType(addressType.getNamespace(), addressType.getName()), nullValue());
+
+        final DMNType tPart = dmnModel.getItemDefinitionByName("tPart").getType();
+        assertThat(tPart, is(notNullValue()));
+        assertThat(tPart.isComposite(), is(true));
+        assertThat(tPart, is(instanceOf(CompositeTypeImpl.class)));
+        assertThat(typeRegistry.resolveType(tPart.getNamespace(), tPart.getName()), notNullValue());
+        final DMNType gradeType = tPart.getFields().get("grade");
+        assertThat(gradeType, is(instanceOf(SimpleTypeImpl.class)));
+        assertThat(gradeType.getName(), is("grade"));
+        assertThat(typeRegistry.resolveType(gradeType.getNamespace(), gradeType.getName()), nullValue());
+
+        final DMNContext context = runtime.newContext();
+        context.set("a person", mapOf(entry("full name", "John Doe"), entry("address", mapOf(entry("country", "IT"), entry("zip", "abcde")))));
+        context.set("a part", mapOf(entry("name", "Part 1"), entry("grade", "B")));
+        
+        final DMNResult evaluateAll = evaluateModel(runtime, dmnModel, context);
+        LOG.debug("{}", evaluateAll);
+        assertThat(DMNRuntimeUtil.formatMessages(evaluateAll.getMessages()), evaluateAll.hasErrors(), is(false));
     }
 
     @Test
     public void testItemDefAllowedValuesString() {
-        final DMNRuntime runtime = DMNRuntimeUtil.createRuntime("0003-input-data-string-allowed-values.dmn", this.getClass() );
+        final DMNRuntime runtime = createRuntime("0003-input-data-string-allowed-values.dmn", this.getClass());
         final DMNModel dmnModel = runtime.getModel("https://github.com/kiegroup/kie-dmn", "0003-input-data-string-allowed-values" );
         assertThat( dmnModel, notNullValue() );
 
@@ -86,7 +183,7 @@ public class DMNCompilerTest extends BaseInterpretedVsCompiledTest {
 
     @Test
     public void testCompositeItemDefinition() {
-        final DMNRuntime runtime = DMNRuntimeUtil.createRuntime("0008-LX-arithmetic.dmn", this.getClass() );
+        final DMNRuntime runtime = createRuntime("0008-LX-arithmetic.dmn", this.getClass());
         final DMNModel dmnModel = runtime.getModel("https://github.com/kiegroup/kie-dmn", "0008-LX-arithmetic" );
         assertThat( dmnModel, notNullValue() );
 
@@ -124,23 +221,25 @@ public class DMNCompilerTest extends BaseInterpretedVsCompiledTest {
     @Test
     public void testCompilationThrowsNPE() {
         try {
-            DMNRuntimeUtil.createRuntime( "compilationThrowsNPE.dmn", this.getClass() );
-        } catch (final IllegalStateException ex) {
+            createRuntime("compilationThrowsNPE.dmn", this.getClass());
+            fail("shouldn't have reached here.");
+        } catch (final Exception ex) {
             assertThat(ex.getMessage(), Matchers.containsString("Unable to compile DMN model for the resource"));
         }
     }
 
     @Test
     public void testRecursiveFunctions() {
-        final DMNRuntime runtime = DMNRuntimeUtil.createRuntime("Recursive.dmn", this.getClass() );
+        // DROOLS-2161
+        final DMNRuntime runtime = createRuntime("Recursive.dmn", this.getClass());
         final DMNModel dmnModel = runtime.getModel("https://github.com/kiegroup/kie-dmn", "Recursive" );
         assertThat( dmnModel, notNullValue() );
-        assertFalse( runtime.evaluateAll( dmnModel, DMNFactory.newContext() ).hasErrors() );
+        assertFalse( evaluateModel(runtime, dmnModel, DMNFactory.newContext() ).hasErrors() );
     }
 
     @Test
     public void testImport() {
-        final DMNRuntime runtime = DMNRuntimeUtil.createRuntimeWithAdditionalResources("Importing_Model.dmn",
+        final DMNRuntime runtime = createRuntimeWithAdditionalResources("Importing_Model.dmn",
                                                                                        this.getClass(),
                                                                                        "Imported_Model.dmn");
 
@@ -161,7 +260,7 @@ public class DMNCompilerTest extends BaseInterpretedVsCompiledTest {
         final DMNContext context = runtime.newContext();
         context.set("A Person", mapOf(entry("name", "John"), entry("age", 47)));
 
-        final DMNResult evaluateAll = runtime.evaluateAll(dmnModel, context);
+        final DMNResult evaluateAll = evaluateModel(runtime, dmnModel, context);
         for (final DMNMessage message : evaluateAll.getMessages()) {
             LOG.debug("{}", message);
         }
@@ -169,4 +268,22 @@ public class DMNCompilerTest extends BaseInterpretedVsCompiledTest {
         assertThat(evaluateAll.getDecisionResultByName("Greeting").getResult(), is("Hello John!"));
     }
 
+    @Test
+    public void testWrongComparisonOps() {
+        final DMNRuntime runtime = createRuntime("WrongComparisonOps.dmn", this.getClass());
+        final DMNModel dmnModel = runtime.getModel("http://www.trisotech.com/definitions/_a937d093-86d3-4306-8db8-1e7a33588b68", "Drawing 1");
+        assertThat(dmnModel, notNullValue());
+        assertThat(DMNRuntimeUtil.formatMessages(dmnModel.getMessages()), dmnModel.hasErrors(), is(false));
+        assertThat(DMNRuntimeUtil.formatMessages(dmnModel.getMessages()), dmnModel.getMessages(), hasSize(4));
+        assertThat(DMNRuntimeUtil.formatMessages(dmnModel.getMessages()), dmnModel.getMessages(DMNMessage.Severity.WARN), hasSize(4));
+        assertThat(DMNRuntimeUtil.formatMessages(dmnModel.getMessages()),
+                   dmnModel.getMessages(DMNMessage.Severity.WARN)
+                           .stream()
+                           .filter(m -> m.getSourceId().equals("_d72d6fab-1e67-4fe7-9c12-54800d6fe294") ||
+                                        m.getSourceId().equals("_2390dd99-094d-4f97-aecc-9cccb697ce05") ||
+                                        m.getSourceId().equals("_0c292d34-498e-4b08-ae99-3c694197b69f") ||
+                                        m.getSourceId().equals("_21c7d800-b806-4b2e-9a10-00828de7f2d2"))
+                           .count(),
+                   is(4L));
+    }
 }
