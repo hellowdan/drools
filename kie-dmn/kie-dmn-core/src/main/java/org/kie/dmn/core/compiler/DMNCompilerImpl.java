@@ -136,6 +136,11 @@ public class DMNCompilerImpl implements DMNCompiler {
     }
 
     @Override
+    public DMNModel compile(Resource resource) {
+        return null;
+    }
+
+    @Override
     public DMNModel compile(Resource resource, Collection<DMNModel> dmnModels) {
         try {
             DMNModel model = compile(resource.getReader(), dmnModels, resource);
@@ -147,8 +152,18 @@ public class DMNCompilerImpl implements DMNCompiler {
     }
 
     @Override
+    public DMNModel compile(Reader source) {
+        return null;
+    }
+
+    @Override
     public DMNModel compile(Reader source, Collection<DMNModel> dmnModels) {
         return compile(source, dmnModels, null);
+    }
+
+    @Override
+    public DMNModel compile(Definitions dmndefs) {
+        return null;
     }
 
     public DMNModel compile(Reader source, Collection<DMNModel> dmnModels, Resource resource) {
@@ -173,6 +188,11 @@ public class DMNCompilerImpl implements DMNCompiler {
     @Override
     public DMNModel compile(Definitions dmndefs, Collection<DMNModel> dmnModels) {
         return compile(dmndefs, dmnModels, null, null);
+    }
+
+    @Override
+    public DMNModel compile(Definitions dmndefs, Resource resource, Collection<DMNModel> dmnModels) {
+        return null;
     }
 
     public DMNModel compile(Definitions dmndefs, Collection<DMNModel> dmnModels, Resource resource, Function<String, Reader> relativeResolver) {
@@ -569,9 +589,9 @@ public class DMNCompilerImpl implements DMNCompiler {
                         );
                         type.setAllowedValues( av );
                     }
-                    if ( itemDef.isIsCollection() ) {
-                        type.setCollection( itemDef.isIsCollection() );
-                    }
+//                    if ( itemDef.isIsCollection() ) {
+//                        type.setCollection( itemDef.isIsCollection() );
+//                    }
                 }
                 if( topLevel ) {
                     DMNType registered = dmnModel.getTypeRegistry().registerType( type );
