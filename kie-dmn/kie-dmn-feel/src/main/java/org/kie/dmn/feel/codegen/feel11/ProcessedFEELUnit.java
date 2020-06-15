@@ -49,8 +49,7 @@ public abstract class ProcessedFEELUnit implements CompiledFEELExpression {
                 ctx.getInputVariableTypes(),
                 ctx.getInputVariables(),
                 ctx.getFEELFunctions(),
-                profiles,
-                ctx.getFEELFeelTypeRegistry());
+                profiles);
     }
 
     private String generateRandomPackage() {

@@ -1398,11 +1398,11 @@ public class FEELParserTest {
     }
 
     private BaseNode parse(String input, Map<String, Type> inputTypes) {
-        FEEL_1_1Parser parser = FEELParser.parse(null, input, inputTypes, Collections.emptyMap(), Collections.emptyList(), Collections.emptyList(), null);
+        FEEL_1_1Parser parser = FEELParser.parse(null, input, inputTypes, Collections.emptyMap(), Collections.emptyList(), Collections.emptyList());
 
         ParseTree tree = parser.expression();
 
-        ASTBuilderVisitor v = new ASTBuilderVisitor(inputTypes, null);
+        ASTBuilderVisitor v = new ASTBuilderVisitor(inputTypes);
         BaseNode expr = v.visit( tree );
         return expr;
     }

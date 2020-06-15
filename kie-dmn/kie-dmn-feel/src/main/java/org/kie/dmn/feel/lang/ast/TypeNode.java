@@ -21,7 +21,7 @@ import org.kie.dmn.feel.lang.EvaluationContext;
 import org.kie.dmn.feel.lang.Type;
 import org.kie.dmn.feel.lang.types.BuiltInType;
 
-public abstract class TypeNode
+public class TypeNode
         extends BaseNode {
 
     public TypeNode() {

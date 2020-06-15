@@ -66,12 +66,12 @@ import org.kie.dmn.core.compiler.ImportDMNResolverUtil.ImportType;
 import org.kie.dmn.core.impl.BaseDMNTypeImpl;
 import org.kie.dmn.core.impl.CompositeTypeImpl;
 import org.kie.dmn.core.impl.DMNModelImpl;
-import org.kie.dmn.core.impl.SimpleTypeImpl;
 import org.kie.dmn.core.pmml.DMNImportPMMLInfo;
 import org.kie.dmn.core.util.Msg;
 import org.kie.dmn.core.util.MsgUtil;
 import org.kie.dmn.feel.lang.FEELProfile;
 import org.kie.dmn.feel.lang.Type;
+import org.kie.dmn.feel.lang.impl.MapBackedType;
 import org.kie.dmn.feel.lang.types.AliasFEELType;
 import org.kie.dmn.feel.lang.types.BuiltInType;
 import org.kie.dmn.feel.lang.types.GenListType;
@@ -172,22 +172,7 @@ public class DMNCompilerImpl implements DMNCompiler {
 
     @Override
     public DMNModel compile(Definitions dmndefs, Collection<DMNModel> dmnModels) {
-        try {
-            return compile(dmndefs, dmnModels, null, null);
-        } catch (Exception e) {
-            logger.error("Error compiling model from source.", e);
-        }
-        return null;
-    }
-
-    @Override
-    public DMNModel compile(Definitions dmndefs, Resource resource, Collection<DMNModel> dmnModels) {
-        try {
-            return compile(dmndefs, dmnModels, resource, null);
-        } catch (Exception e) {
-            logger.error("Error compiling model from source.", e);
-        }
-        return null;
+        return compile(dmndefs, dmnModels, null, null);
     }
 
     public DMNModel compile(Definitions dmndefs, Collection<DMNModel> dmnModels, Resource resource, Function<String, Reader> relativeResolver) {
@@ -287,12 +272,12 @@ public class DMNCompilerImpl implements DMNCompiler {
     }
 
     protected static Resource resolveRelativeResource(ClassLoader classLoader, DMNModelImpl model, Import i, DMNModelInstrumentedBase node, Function<String, Reader> relativeResolver) {
-        if (relativeResolver != null) {
-            Reader reader = relativeResolver.apply(i.getLocationURI());
-            return ResourceFactory.newReaderResource(reader);
-        } else if (model.getResource() != null) {
+        if (model.getResource() != null) {
             URL pmmlURL = pmmlImportURL(classLoader, model, i, node);
             return ResourceFactory.newUrlResource(pmmlURL);
+        } else if (relativeResolver != null) {
+            Reader reader = relativeResolver.apply(i.getLocationURI());
+            return ResourceFactory.newReaderResource(reader);
         }
         throw new UnsupportedOperationException("Unable to determine relative Resource for import named: " + i.getName());
     }
@@ -352,7 +337,7 @@ public class DMNCompilerImpl implements DMNCompiler {
         
         for ( ItemDefinition id : ordered ) {
             ItemDefNodeImpl idn = new ItemDefNodeImpl( id );
-            DMNType type = buildTypeDef(ctx, model, idn, id, null);
+            DMNType type = buildTypeDef(ctx, model, idn, id, true);
             idn.setType( type );
             model.addItemDefinition( idn );
         }
@@ -546,10 +531,7 @@ public class DMNCompilerImpl implements DMNCompiler {
         return href.startsWith("#") ? href.substring(1) : href;
     }
 
-    /**
-     * @param topLevel null if it is a top level ItemDefinition
-     */
-    private DMNType buildTypeDef(DMNCompilerContext ctx, DMNModelImpl dmnModel, DMNNode node, ItemDefinition itemDef, DMNType topLevel) {
+    private DMNType buildTypeDef(DMNCompilerContext ctx, DMNModelImpl dmnModel, DMNNode node, ItemDefinition itemDef, boolean topLevel) {
         BaseDMNTypeImpl type = null;
         if ( itemDef.getTypeRef() != null ) {
             // this is a reference to an existing type, so resolve the reference
@@ -559,22 +541,24 @@ public class DMNCompilerImpl implements DMNCompiler {
 
                 // we only want to clone the type definition if it is a top level type (not a field in a composite type)
                 // or if it changes the metadata for the base type
-                if (topLevel == null || allowedValuesStr != null || itemDef.isIsCollection() != type.isCollection()) {
+                if( topLevel || allowedValuesStr != null || itemDef.isIsCollection() != type.isCollection() ) {
 
                     // we have to clone this type definition into a new one
-                    String name = itemDef.getName();
-                    String namespace = dmnModel.getNamespace();
-                    String id = itemDef.getId();
                     BaseDMNTypeImpl baseType = type;
+                    type = type.clone();
+
+                    type.setBaseType( baseType );
+                    type.setNamespace( dmnModel.getNamespace() );
+                    type.setName( itemDef.getName() );
 
                     Type baseFEELType = type.getFeelType();
                     if (baseFEELType instanceof BuiltInType) { // Then it is an ItemDefinition in place for "aliasing" a base FEEL type, for having type(itemDefname) I need to define its SimpleType.
-                        baseFEELType = new AliasFEELType(itemDef.getName(), (BuiltInType) baseFEELType);
+                        type.setFeelType(new AliasFEELType(itemDef.getName(), (BuiltInType) baseFEELType));
                     }
 
-                    List<UnaryTest> av = null;
+                    type.setAllowedValues(null);
                     if ( allowedValuesStr != null ) {
-                        av = ctx.getFeelHelper().evaluateUnaryTests(
+                        List<UnaryTest> av = ctx.getFeelHelper().evaluateUnaryTests(
                                 ctx,
                                 allowedValuesStr.getText(),
                                 dmnModel,
@@ -583,24 +567,13 @@ public class DMNCompilerImpl implements DMNCompiler {
                                 allowedValuesStr.getText(),
                                 node.getName()
                         );
+                        type.setAllowedValues( av );
                     }
-
-                    boolean isCollection = itemDef.isIsCollection();
-                    if (isCollection) {
-                        baseFEELType = new GenListType(baseFEELType);
-                    }
-
-                    if (type instanceof CompositeTypeImpl) {
-                        CompositeTypeImpl compositeTypeImpl = (CompositeTypeImpl) type;
-                        type = new CompositeTypeImpl(namespace, name, id, isCollection, compositeTypeImpl.getFields(), baseType, baseFEELType);
-                    } else if (type instanceof SimpleTypeImpl) {
-                        type = new SimpleTypeImpl(namespace, name, id, isCollection, av, baseType, baseFEELType);
-                    }
-                    if (topLevel != null) {
-                        ((BaseDMNTypeImpl) type).setBelongingType(topLevel);
+                    if ( itemDef.isIsCollection() ) {
+                        type.setCollection( itemDef.isIsCollection() );
                     }
                 }
-                if (topLevel == null) {
+                if( topLevel ) {
                     DMNType registered = dmnModel.getTypeRegistry().registerType( type );
                     if( registered != type ) {
                         MsgUtil.reportMessage( logger,
@@ -613,13 +586,16 @@ public class DMNCompilerImpl implements DMNCompiler {
                                                itemDef.getName() );
                     }
                 }
+                if (type.isCollection()) {
+                    type.setFeelType(new GenListType(type.getFeelType()));
+                }
             }
         } else {
             // this is a composite type
             DMNCompilerHelper.checkVariableName( dmnModel, itemDef, itemDef.getName() );
             CompositeTypeImpl compType = new CompositeTypeImpl( dmnModel.getNamespace(), itemDef.getName(), itemDef.getId(), itemDef.isIsCollection() );
             type = compType;
-            if (topLevel == null) {
+            if( topLevel ) {
                 DMNType registered = dmnModel.getTypeRegistry().registerType( type );
                 if( registered != type ) {
                     MsgUtil.reportMessage( logger,
@@ -631,14 +607,18 @@ public class DMNCompilerImpl implements DMNCompiler {
                                            Msg.DUPLICATED_ITEM_DEFINITION,
                                            itemDef.getName() );
                 }
-            } else {
-                ((BaseDMNTypeImpl) type).setBelongingType(topLevel);
             }
+            Map<String, Type> fieldsAsFEEL = new HashMap<>();
             for (ItemDefinition fieldDef : itemDef.getItemComponent()) {
                 DMNCompilerHelper.checkVariableName(dmnModel, fieldDef, fieldDef.getName());
-                DMNType fieldType = buildTypeDef(ctx, dmnModel, node, fieldDef, compType);
+                DMNType fieldType = buildTypeDef(ctx, dmnModel, node, fieldDef, false);
                 fieldType = fieldType != null ? fieldType : dmnModel.getTypeRegistry().unknown();
                 compType.addField(fieldDef.getName(), fieldType);
+                fieldsAsFEEL.put(fieldDef.getName(), ((BaseDMNTypeImpl) fieldType).getFeelType());
+            }
+            type.setFeelType(new MapBackedType(type.getName(), fieldsAsFEEL));
+            if (type.isCollection()) {
+                type.setFeelType(new GenListType(type.getFeelType()));
             }
         }
         return type;

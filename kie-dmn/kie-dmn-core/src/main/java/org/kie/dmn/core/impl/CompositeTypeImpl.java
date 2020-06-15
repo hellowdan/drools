@@ -26,7 +26,6 @@ import java.util.Map.Entry;
 import org.kie.dmn.api.core.DMNType;
 import org.kie.dmn.feel.lang.Type;
 import org.kie.dmn.feel.lang.impl.MapBackedType;
-import org.kie.dmn.feel.lang.types.GenListType;
 import org.kie.dmn.feel.util.EvalHelper;
 import org.kie.dmn.feel.util.EvalHelper.PropertyValueResult;
 
@@ -61,9 +60,6 @@ public class CompositeTypeImpl
                     ((MapBackedType) feelType).addField( field.getKey(), ((BaseDMNTypeImpl)field.getValue()).getFeelType() );
                 }
             }
-            if (isCollection) {
-                setFeelType(new GenListType(getFeelType()));
-            }
         }
     }
 
@@ -73,8 +69,7 @@ public class CompositeTypeImpl
 
     public void addField( String name, DMNType type ) {
         this.fields.put( name, type );
-        MapBackedType mbType = !isCollection() ? (MapBackedType) getFeelType() : (MapBackedType) ((GenListType) getFeelType()).getGen();
-        mbType.addField(name, ((BaseDMNTypeImpl) type).getFeelType());
+        ((MapBackedType) getFeelType()).addField( name, ((BaseDMNTypeImpl)type).getFeelType() );
     }
 
     public String toString(Object value) {

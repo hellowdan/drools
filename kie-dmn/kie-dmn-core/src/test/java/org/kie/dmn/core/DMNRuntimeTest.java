@@ -1288,9 +1288,9 @@ public class DMNRuntimeTest extends BaseInterpretedVsCompiledTest {
         final DMNContext ctx2 = runtime.newContext();
         ctx2.set("CSA Trade Ratings", null);
         final DMNResult dmnResult2 = runtime.evaluateAll(dmnModel, ctx2 );
-        assertThat(DMNRuntimeUtil.formatMessages(dmnResult2.getMessages()), dmnResult2.hasErrors(), is(true));
-        assertThat(dmnResult2.getMessages().stream().anyMatch(m -> m.getMessageType().equals(DMNMessageType.FEEL_EVALUATION_ERROR)), is(true));
-        assertThat(dmnResult2.getDecisionResultByName("Trade Ratings").getEvaluationStatus(), is(DecisionEvaluationStatus.FAILED));
+        assertThat( DMNRuntimeUtil.formatMessages( dmnResult2.getMessages() ), dmnResult2.hasErrors(), is( false ) );
+        final DMNContext result2 = dmnResult2.getContext();
+        assertThat( result2.get("Trade Ratings"), nullValue() );
         
                 
         final DMNResult dmnResult3 = runtime.evaluateAll(dmnModel, runtime.newContext() );
@@ -2833,76 +2833,6 @@ public class DMNRuntimeTest extends BaseInterpretedVsCompiledTest {
         LOG.debug("{}", dmnResult);
         assertThat(DMNRuntimeUtil.formatMessages(dmnResult.getMessages()), dmnResult.hasErrors(), is(false));
         assertThat(DMNRuntimeUtil.formatMessages(dmnResult.getMessages()), dmnResult.getDecisionResultByName("my decision").getResult(), is("The person: Doe J., on the 28 of the month 1 at the 10 hour."));
-    }
-
-    @Test
-    public void testInstanceOfItemDefBasic() {
-        final DMNRuntime runtime = DMNRuntimeUtil.createRuntime("instanceOfItemDefBasic.dmn", this.getClass());
-        final DMNModel dmnModel = runtime.getModel("https://kiegroup.org/dmn/_CF9357D4-C83F-4F7E-83E3-510310EB16F4", "testItemDefName");
-        assertThat(dmnModel, notNullValue());
-        assertThat(DMNRuntimeUtil.formatMessages(dmnModel.getMessages()), dmnModel.hasErrors(), is(false));
-
-        final DMNContext context = DMNFactory.newContext();
-        context.set("name", "John Doe");
-
-        final DMNResult dmnResult = runtime.evaluateAll(dmnModel, context);
-        LOG.debug("{}", dmnResult);
-        assertThat(DMNRuntimeUtil.formatMessages(dmnResult.getMessages()), dmnResult.hasErrors(), is(false));
-        assertThat(dmnResult.getDecisionResultByName("Decision-2").getResult(), is(true));
-    }
-
-    @Test
-    public void testUniqueMissingMatchDefaultEmpty() {
-        final DMNRuntime runtime = DMNRuntimeUtil.createRuntime("uniqueNoMatch.dmn", this.getClass());
-        final DMNModel dmnModel = runtime.getModel("http://activiti.org/schema/1.0/dmn", "decisionmulti");
-        assertThat(dmnModel, notNullValue());
-        assertThat(DMNRuntimeUtil.formatMessages(dmnModel.getMessages()), dmnModel.hasErrors(), is(false));
-
-        checkUniqueMissingMatchDefaultEmpty(runtime, dmnModel, 11, true);
-        checkUniqueMissingMatchDefaultEmpty(runtime, dmnModel, 12, null);
-    }
-
-    private void checkUniqueMissingMatchDefaultEmpty(final DMNRuntime runtime, final DMNModel dmnModel, int input, Boolean output) {
-        final DMNContext context = DMNFactory.newContext();
-        context.set("inputInteger", input);
-
-        final DMNResult dmnResult = runtime.evaluateAll(dmnModel, context);
-        LOG.debug("{}", dmnResult);
-        assertThat(DMNRuntimeUtil.formatMessages(dmnResult.getMessages()), dmnResult.hasErrors(), is(false));
-        assertThat(dmnResult.getDecisionResultByName("Decision_decisionboolean").getResult(), is(output));
-    }
-
-    @Test
-    public void testErrorWhileLiteral() {
-        final DMNRuntime runtime = DMNRuntimeUtil.createRuntime("errorWhileLiteral.dmn", this.getClass());
-        runtime.addListener(new DMNRuntimeEventListener() {});
-        final DMNModel dmnModel = runtime.getModel("https://kiegroup.org/dmn/_8DF63435-B34B-4C19-A06B-C6A3416194A9", "testBasic");
-        assertThat(dmnModel, notNullValue());
-        assertThat(DMNRuntimeUtil.formatMessages(dmnModel.getMessages()), dmnModel.hasErrors(), is(false));
-
-        final DMNContext context = DMNFactory.newContext();
-
-        final DMNResult dmnResult = runtime.evaluateAll(dmnModel, context);
-        LOG.debug("{}", dmnResult);
-        assertThat(DMNRuntimeUtil.formatMessages(dmnResult.getMessages()), dmnResult.hasErrors(), is(true));
-        assertThat(dmnResult.getDecisionResultByName("Decision-1").getEvaluationStatus(), is(DecisionEvaluationStatus.FAILED));
-    }
-
-    @Test
-    public void testXAsType() {
-        final DMNRuntime runtime = DMNRuntimeUtil.createRuntime("xAsType.dmn", this.getClass());
-        final DMNModel dmnModel = runtime.getModel("https://kiegroup.org/dmn/_CA816D47-2D7A-41AA-B019-E4B4C5488385", "FEC85B35-BAC9-4FCC-A446-0D546CCAD1A4");
-        assertThat(dmnModel, notNullValue());
-        assertThat(DMNRuntimeUtil.formatMessages(dmnModel.getMessages()), dmnModel.hasErrors(), is(false));
-
-        final DMNContext context = DMNFactory.newContext();
-        context.set("a x", "a x");
-        context.set("x", LocalDate.of(2020, 5, 11));
-
-        final DMNResult dmnResult = runtime.evaluateAll(dmnModel, context);
-        LOG.debug("{}", dmnResult);
-        assertThat(DMNRuntimeUtil.formatMessages(dmnResult.getMessages()), dmnResult.hasErrors(), is(false));
-        assertThat(dmnResult.getDecisionResultByName("Decision-1").getResult(), is("a x, 2020"));
     }
 }
 

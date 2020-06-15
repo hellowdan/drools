@@ -35,8 +35,6 @@ import org.kie.dmn.feel.lang.Type;
 import org.kie.dmn.feel.lang.impl.FEELEventListenersManager;
 import org.kie.dmn.feel.lang.types.AliasFEELType;
 import org.kie.dmn.feel.lang.types.BuiltInType;
-import org.kie.dmn.feel.lang.types.DefaultBuiltinFEELTypeRegistry;
-import org.kie.dmn.feel.lang.types.FEELTypeRegistry;
 import org.kie.dmn.feel.lang.types.GenListType;
 import org.kie.dmn.feel.lang.types.ScopeImpl;
 import org.kie.dmn.feel.lang.types.SymbolTable;
@@ -56,7 +54,6 @@ public class ParserHelper {
     private int dynamicResolution = 0;
     private boolean featDMN12EnhancedForLoopEnabled = true; // DROOLS-2307 DMN enhanced for loop
     private boolean featDMN12weekday = true; // DROOLS-2648 DMN v1.2 weekday on 'date', 'date and time'
-    private FEELTypeRegistry typeRegistry = DefaultBuiltinFEELTypeRegistry.INSTANCE;
 
     public ParserHelper() {
         this( null );
@@ -80,16 +77,6 @@ public class ParserHelper {
     public void pushScope(Type type) {
         LOG.trace("pushScope()");
         currentScope = new ScopeImpl( currentName.peek(), currentScope, type );
-    }
-
-    public void setTypeRegistry(FEELTypeRegistry typeRegistry) {
-        this.typeRegistry = typeRegistry;
-    }
-
-    public void pushTypeScope() {
-        LOG.trace("pushTypeScope()");
-        Scope newTypeScope = typeRegistry.getItemDefScope(currentScope);
-        currentScope = newTypeScope;
     }
 
     public void popScope() {

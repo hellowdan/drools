@@ -115,11 +115,11 @@ public class DMNModelImpl
 
     private void wireTypeRegistry(Definitions definitions) {
         if (definitions instanceof org.kie.dmn.model.v1_1.TDefinitions) {
-            types = new DMNTypeRegistryV11(Collections.unmodifiableMap(importAliases));
+            types = new DMNTypeRegistryV11();
         } else if (definitions instanceof org.kie.dmn.model.v1_2.TDefinitions) {
-            types = new DMNTypeRegistryV12(Collections.unmodifiableMap(importAliases));
+            types = new DMNTypeRegistryV12();
         } else {
-            types = new DMNTypeRegistryV13(Collections.unmodifiableMap(importAliases));
+            types = new DMNTypeRegistryV13();
         }
     }
     

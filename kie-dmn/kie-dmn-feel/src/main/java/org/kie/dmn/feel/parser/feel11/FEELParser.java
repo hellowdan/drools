@@ -44,7 +44,7 @@ import org.kie.dmn.feel.lang.FEELProfile;
 import org.kie.dmn.feel.lang.Scope;
 import org.kie.dmn.feel.lang.Type;
 import org.kie.dmn.feel.lang.impl.FEELEventListenersManager;
-import org.kie.dmn.feel.lang.types.FEELTypeRegistry;
+import org.kie.dmn.feel.lang.types.BuiltInTypeSymbol;
 import org.kie.dmn.feel.runtime.FEELFunction;
 import org.kie.dmn.feel.runtime.events.SyntaxErrorEvent;
 import org.kie.dmn.feel.util.Msg;
@@ -57,7 +57,7 @@ public class FEELParser {
     );
     private static final Pattern DIGITS_PATTERN = Pattern.compile( "[0-9]*" );
 
-    public static FEEL_1_1Parser parse(FEELEventListenersManager eventsManager, String source, Map<String, Type> inputVariableTypes, Map<String, Object> inputVariables, Collection<FEELFunction> additionalFunctions, List<FEELProfile> profiles, FEELTypeRegistry typeRegistry) {
+    public static FEEL_1_1Parser parse(FEELEventListenersManager eventsManager, String source, Map<String, Type> inputVariableTypes, Map<String, Object> inputVariables, Collection<FEELFunction> additionalFunctions, List<FEELProfile> profiles) {
         CharStream input = CharStreams.fromString(source);
         FEEL_1_1Lexer lexer = new FEEL_1_1Lexer( input );
         CommonTokenStream tokens = new CommonTokenStream( lexer );
@@ -73,10 +73,6 @@ public class FEELParser {
         // pre-loads the parser with symbols
         defineVariables( inputVariableTypes, inputVariables, parser );
         
-        if (typeRegistry != null) {
-            parserHelper.setTypeRegistry(typeRegistry);
-        }
-
         return parser;
     }
     
@@ -128,6 +124,9 @@ public class FEELParser {
     public static void defineVariables(Map<String, Type> inputVariableTypes, Map<String, Object> inputVariables, FEEL_1_1Parser parser) {
         inputVariableTypes.forEach( (name, type) -> {
             parser.getHelper().defineVariable( name, type );
+            if (type.getName() != null) {
+                parser.getHelper().getSymbolTable().getGlobalScope().define(new BuiltInTypeSymbol(type.getName(), type));
+            }
         } );
         
         inputVariables.forEach( (name, value) -> {
