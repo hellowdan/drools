@@ -121,7 +121,6 @@ public class DMNFunctionDefinitionEvaluator
         private final DMNExpressionEvaluator evaluator;
         private final DMNRuntimeEventManager eventManager;
         private final DMNResultImpl resultContext;
-        private final DMNContext closureContext;
         private final FunctionDefinition functionDefinition;
         private final boolean performRuntimeTypeCheck;
 
@@ -134,8 +133,6 @@ public class DMNFunctionDefinitionEvaluator
             this.evaluator = evaluator;
             this.eventManager = eventManager;
             this.resultContext = result;
-            this.closureContext = result.getContext().clone();
-            this.closureContext.set(name, this); // allow recursion in closure.
             performRuntimeTypeCheck = ((DMNRuntimeImpl) eventManager.getRuntime()).performRuntimeTypeCheck(result.getModel());
         }
 
@@ -150,7 +147,7 @@ public class DMNFunctionDefinitionEvaluator
                     DMNRuntimeEventManagerUtils.fireBeforeInvokeBKM(eventManager, (BusinessKnowledgeModelNode) originatorNode, resultContext);
                 }
                 if( evaluator != null ) {
-                    closureContext.getAll().forEach(dmnContext::set);
+                    previousContext.getAll().forEach(dmnContext::set);
                     for( int i = 0; i < params.length; i++ ) {
                         final String paramName = parameters.get(i).name;
                         if ((!performRuntimeTypeCheck) || parameters.get(i).type.isAssignableValue(params[i])) {

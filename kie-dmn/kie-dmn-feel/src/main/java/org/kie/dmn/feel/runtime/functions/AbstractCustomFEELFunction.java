@@ -37,13 +37,10 @@ public abstract class AbstractCustomFEELFunction<B> extends BaseFEELFunction {
     final List<FEELFunction.Param> parameters;
     protected final B body;
 
-    protected final EvaluationContext closureCtx;
-
-    public AbstractCustomFEELFunction(String name, List<BaseFEELFunction.Param> parameters, B body, EvaluationContext ctx) {
+    public AbstractCustomFEELFunction(String name, List<BaseFEELFunction.Param> parameters, B body) {
         super( name );
         this.parameters = parameters;
         this.body = body;
-        this.closureCtx = ctx;
     }
 
     public FEELFnResult<Object> invoke(EvaluationContext ctx, Object[] params) {
@@ -93,14 +90,6 @@ public abstract class AbstractCustomFEELFunction<B> extends BaseFEELFunction {
     @Override
     protected boolean isCustomFunction() {
         return true;
-    }
-
-    public boolean isProperClosure() {
-        return closureCtx != null;
-    }
-
-    public EvaluationContext getEvaluationContext() {
-        return closureCtx;
     }
 
     @Override

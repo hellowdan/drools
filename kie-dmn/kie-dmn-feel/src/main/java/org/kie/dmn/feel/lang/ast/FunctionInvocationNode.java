@@ -28,7 +28,6 @@ import org.kie.dmn.feel.lang.Type;
 import org.kie.dmn.feel.runtime.FEELFunction;
 import org.kie.dmn.feel.runtime.Range;
 import org.kie.dmn.feel.runtime.UnaryTest;
-import org.kie.dmn.feel.runtime.functions.AbstractCustomFEELFunction;
 import org.kie.dmn.feel.util.Msg;
 
 public class FunctionInvocationNode
@@ -74,8 +73,6 @@ public class FunctionInvocationNode
         } else if (name instanceof PathExpressionNode) {
             PathExpressionNode pathExpressionNode = (PathExpressionNode) name;
             value = pathExpressionNode.evaluate(ctx);
-        } else {
-            value = name.evaluate(ctx);
         }
         if ( value instanceof FEELFunction ) {
             function = (FEELFunction) value;
@@ -111,14 +108,9 @@ public class FunctionInvocationNode
     }
 
     private Object invokeTheFunction(List<String> names, FEELFunction fn, EvaluationContext ctx, Object[] params) {
-        if (names.size() == 1 || names.isEmpty()) {
-            if (fn instanceof AbstractCustomFEELFunction<?>) {
-                AbstractCustomFEELFunction<?> ff = (AbstractCustomFEELFunction<?>) fn;
-                if (ff.isProperClosure()) {
-                    return ff.invokeReflectively(ff.getEvaluationContext(), params);
-                }
-            }
-            return fn.invokeReflectively(ctx, params);
+        if (names.size() == 1) {
+            Object result = fn.invokeReflectively(ctx, params);
+            return result;
         } else {
             try {
                 Object newRoot = ctx.getValue(names.get(0));
