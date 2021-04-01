@@ -112,6 +112,16 @@ public class KieSessionModelImpl
         return this;
     }
 
+    @Override
+    public boolean isAccumulateNullPropagation() {
+        return false;
+    }
+
+    @Override
+    public KieSessionModel setAccumulateNullPropagation(boolean b) {
+        return null;
+    }
+
     /* (non-Javadoc)
      * @see org.kie.kproject.KieSessionModel#getName()
      */
