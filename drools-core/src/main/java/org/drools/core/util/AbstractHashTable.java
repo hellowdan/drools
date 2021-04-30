@@ -30,8 +30,8 @@ import org.drools.core.spi.TupleValueExtractor;
 import org.drools.core.util.index.TupleList;
 
 public abstract class AbstractHashTable
-    implements
-    Externalizable {
+        implements
+        Externalizable {
     static final int           MAX_CAPACITY = 1 << 30;
 
     public static final int                           PRIME            = 31;
@@ -74,7 +74,7 @@ public abstract class AbstractHashTable
 
     @Override
     public void readExternal(ObjectInput in) throws IOException,
-                                            ClassNotFoundException {
+            ClassNotFoundException {
         size = in.readInt();
         threshold = in.readInt();
         loadFactor = in.readFloat();
@@ -139,12 +139,12 @@ public abstract class AbstractHashTable
             this.table[i] = null;
             while ( entry != null ) {
                 Entry next = entry.getNext();
-                                
+
                 // we must use getResizeHashcode as some sub classes cache the hashcode and some don't
                 // otherwise we end up rehashing a cached hashcode that has already been rehashed.
                 final int index = indexOf(  getResizeHashcode( entry ),
                                             newTable.length );
-                
+
                 entry.setNext( newTable[index] );
                 newTable[index] = entry;
 
@@ -155,7 +155,7 @@ public abstract class AbstractHashTable
         this.table = newTable;
         this.threshold = (int) (newCapacity * this.loadFactor);
     }
-    
+
     public abstract int getResizeHashcode(Entry entry);
 
     public Entry[] toArray() {
@@ -182,22 +182,22 @@ public abstract class AbstractHashTable
     public boolean isEmpty() {
         return this.size == 0;
     }
-    
+
     public static int rehash(int hash) {
         hash ^= (hash >>> 20) ^ (hash >>> 12);
         return hash ^ (hash >>> 7) ^ (hash >>> 4);
-    }     
+    }
 
     protected static int indexOf(final int hashCode,
-                          final int dataSize) {
+                                 final int dataSize) {
         return hashCode & (dataSize - 1);
-    }      
+    }
 
     public interface ObjectComparator extends Externalizable {
         int hashCodeOf(Object object);
         boolean areEqual(Object object1, Object object2);
     }
-    
+
     @Override
     public String toString() {
         StringBuilder sbuilder = new StringBuilder();
@@ -210,7 +210,7 @@ public abstract class AbstractHashTable
             }
             isFirst = false;
         }
-        
+
         return sbuilder.toString();
     }
 
@@ -218,15 +218,15 @@ public abstract class AbstractHashTable
     }
 
     public static class InstanceEquals
-        extends
-        AbstractObjectComparator {
+            extends
+            AbstractObjectComparator {
 
         private static final long            serialVersionUID = 510l;
         public static final ObjectComparator INSTANCE         = new InstanceEquals();
 
         @Override
         public void readExternal(ObjectInput in) throws IOException,
-                                                ClassNotFoundException {
+                ClassNotFoundException {
         }
 
         @Override
@@ -240,11 +240,11 @@ public abstract class AbstractHashTable
         public InstanceEquals() {
 
         }
-        
+
         @Override
         public int hashCodeOf(final Object obj) {
             return rehash( System.identityHashCode( obj ) );
-        }        
+        }
 
         @Override
         public boolean areEqual(final Object object1,
@@ -254,15 +254,15 @@ public abstract class AbstractHashTable
     }
 
     public static class EqualityEquals
-        extends
-        AbstractObjectComparator {
+            extends
+            AbstractObjectComparator {
 
         private static final long            serialVersionUID = 510l;
         public static final ObjectComparator INSTANCE         = new EqualityEquals();
 
         @Override
         public void readExternal(ObjectInput in) throws IOException,
-                                                ClassNotFoundException {
+                ClassNotFoundException {
         }
 
         @Override
@@ -276,11 +276,11 @@ public abstract class AbstractHashTable
         public EqualityEquals() {
 
         }
-        
+
         @Override
         public int hashCodeOf(final Object key) {
             return rehash( key.hashCode() );
-        }        
+        }
 
         @Override
         public boolean areEqual(final Object object1,
@@ -314,7 +314,7 @@ public abstract class AbstractHashTable
 
         @Override
         public void readExternal(ObjectInput in) throws IOException,
-                                                ClassNotFoundException {
+                ClassNotFoundException {
             rightExtractor = (InternalReadAccessor) in.readObject();
             leftExtractor = (Declaration) in.readObject();
             requiresCoercion = isCoercionRequired( rightExtractor, leftExtractor );
@@ -343,7 +343,7 @@ public abstract class AbstractHashTable
                     ( requiresCoercion ?
                             rightExtractor.getValueType().coerce( leftExtractor.getValue( tuple ) ) :
                             leftExtractor.getValue( tuple ) ) :
-                   rightExtractor.getValue( null, tuple.getFactHandle().getObject() );
+                    rightExtractor.getValue( null, tuple.getFactHandle().getObject() );
         }
     }
 
@@ -372,7 +372,7 @@ public abstract class AbstractHashTable
 
         @Override
         public void readExternal(ObjectInput in) throws IOException,
-                                                ClassNotFoundException {
+                ClassNotFoundException {
             index = (FieldIndex) in.readObject();
             startResult = in.readInt();
         }
@@ -400,10 +400,12 @@ public abstract class AbstractHashTable
     public static class IndexTupleList extends TupleList {
         private HashEntry hashEntry;
         private Index index;
+        private int hashCode;
 
         public IndexTupleList( Index index, HashEntry hashEntry ) {
             this.index = index;
             this.hashEntry = hashEntry;
+            this.hashCode = hashEntry.hashCode();
         }
 
         @Override
@@ -412,12 +414,12 @@ public abstract class AbstractHashTable
                 return false;
             }
             final IndexTupleList other = (IndexTupleList) object;
-            return this.hashEntry.hashCode() == other.hashEntry.hashCode() && this.index == other.index;
+            return this.hashCode == other.hashCode && this.index == other.index;
         }
 
         @Override
         public int hashCode() {
-            return this.hashEntry.hashCode();
+            return this.hashCode;
         }
 
         @Override
@@ -425,6 +427,7 @@ public abstract class AbstractHashTable
             super.copyStateInto( other );
             ( (IndexTupleList) other ).hashEntry = hashEntry;
             ( (IndexTupleList) other ).index = index;
+            ( (IndexTupleList) other ).hashCode = hashCode;
         }
 
         public HashEntry getHashEntry() {
@@ -455,7 +458,7 @@ public abstract class AbstractHashTable
 
         @Override
         public void readExternal(ObjectInput in) throws IOException,
-                                                ClassNotFoundException {
+                ClassNotFoundException {
             index1 = (FieldIndex) in.readObject();
             index2 = (FieldIndex) in.readObject();
             startResult = in.readInt();
@@ -511,7 +514,7 @@ public abstract class AbstractHashTable
 
         @Override
         public void readExternal(ObjectInput in) throws IOException,
-                                                ClassNotFoundException {
+                ClassNotFoundException {
             index1 = (FieldIndex) in.readObject();
             index2 = (FieldIndex) in.readObject();
             index3 = (FieldIndex) in.readObject();
