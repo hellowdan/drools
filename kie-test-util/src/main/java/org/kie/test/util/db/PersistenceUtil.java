@@ -147,9 +147,9 @@ public class PersistenceUtil {
         if (driverClass.startsWith("org.h2")) {
             String jdbcUrl = dsProps.getProperty("url");
             // fix an incomplete JDBC URL used by some tests
-            if (jdbcUrl.startsWith("jdbc:h2:") && !jdbcUrl.contains("tcp://")) {
-                dsProps.put("url", jdbcUrl + "tcp://localhost/target/./persistence-test");
-            }
+//            if (jdbcUrl.startsWith("jdbc:h2:") && !jdbcUrl.contains("tcp://")) {
+//                dsProps.put("url", jdbcUrl + "tcp://localhost/target/./persistence-test");
+//            }
             h2Server.start();
         }
         return DataSourceFactory.setupPoolingDataSource(datasourceName, dsProps);
