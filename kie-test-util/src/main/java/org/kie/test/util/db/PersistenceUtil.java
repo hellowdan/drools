@@ -146,13 +146,25 @@ public class PersistenceUtil {
 
         if (driverClass.startsWith("org.h2")) {
             String jdbcUrl = dsProps.getProperty("url");
-            // fix an incomplete JDBC URL used by some tests
-//            if (jdbcUrl.startsWith("jdbc:h2:") && !jdbcUrl.contains("tcp://")) {
-//                dsProps.put("url", jdbcUrl + "tcp://localhost/target/./persistence-test");
-//            }
+            dsProps.put("url", prepareH2JdbcUrl(jdbcUrl));
             h2Server.start();
         }
         return DataSourceFactory.setupPoolingDataSource(datasourceName, dsProps);
+    }
+
+    public static String prepareH2JdbcUrl(String jdbcUrl){
+        String result = jdbcUrl;
+
+        // fix an incomplete JDBC URL used by some tests
+        if (jdbcUrl.startsWith("jdbc:h2:") && !jdbcUrl.contains("tcp://")) {
+            if(jdbcUrl.contains(";")){ //it indicates that url contains key/value parameters (like ;DB_CLOSE_ON_EXIT=FALSE)
+                result = jdbcUrl.substring(0, jdbcUrl.indexOf(";")) + "tcp://localhost/target/./persistence-test" + jdbcUrl.substring(jdbcUrl.indexOf(";"));
+            } else {
+                result = jdbcUrl + "tcp://localhost/target/./persistence-test";
+            }
+        }
+
+        return result;
     }
 
     /**
