@@ -22,30 +22,30 @@ import org.junit.Test;
 public class PersistenceUtilTest {
 
     @Test
-    public void verifyH2JdbcUrlWithoutTcpWithParams() {
-        final String RESULT_JDBC_URL = "jdbc:h2:mem:testtcp://localhost/target/./persistence-test;MVCC=TRUE;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE";
+    public void verifyH2JdbcUrlWithMemWithParams() {
+        final String RESULT_JDBC_URL = "jdbc:h2:mem:test;MVCC=TRUE;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE";
         String url = "jdbc:h2:mem:test;MVCC=TRUE;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE";
         assertEquals(RESULT_JDBC_URL, PersistenceUtil.prepareH2JdbcUrl(url));
     }
 
     @Test
-    public void verifyH2JdbcUrlWithTcpWithParams() {
-        final String RESULT_JDBC_URL = "jdbc:h2:mem:testtcp://localhost/target/./persistence-test;MVCC=TRUE;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE";
-        String url = "jdbc:h2:mem:testtcp://localhost/target/./persistence-test;MVCC=TRUE;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE";
-        assertEquals(RESULT_JDBC_URL, PersistenceUtil.prepareH2JdbcUrl(url));
-    }
-
-    @Test
     public void verifyH2JdbcUrlWithoutTcpWithoutParams() {
-        final String RESULT_JDBC_URL = "jdbc:h2:mem:testtcp://localhost/target/./persistence-test";
-        String url = "jdbc:h2:mem:test";
+        final String RESULT_JDBC_URL = "jdbc:h2:tcp://localhost/target/./persistence-test";
+        String url = "jdbc:h2:";
         assertEquals(RESULT_JDBC_URL, PersistenceUtil.prepareH2JdbcUrl(url));
     }
 
     @Test
     public void verifyH2JdbcUrlWithTcpWithoutParams() {
-        final String RESULT_JDBC_URL = "jdbc:h2:mem:testtcp://localhost/target/./persistence-test";
-        String url = "jdbc:h2:mem:testtcp://localhost/target/./persistence-test";
+        final String RESULT_JDBC_URL = "jdbc:h2:tcp://localhost/target/./persistence-test";
+        String url = "jdbc:h2:tcp://localhost/target/./persistence-test";
+        assertEquals(RESULT_JDBC_URL, PersistenceUtil.prepareH2JdbcUrl(url));
+    }
+
+    @Test
+    public void verifyH2JdbcUrlWithMemWithoutParams() {
+        final String RESULT_JDBC_URL = "jdbc:h2:mem:test";
+        String url = "jdbc:h2:mem:test";
         assertEquals(RESULT_JDBC_URL, PersistenceUtil.prepareH2JdbcUrl(url));
     }
 

@@ -156,12 +156,8 @@ public class PersistenceUtil {
         String result = jdbcUrl;
 
         // fix an incomplete JDBC URL used by some tests
-        if (jdbcUrl.startsWith("jdbc:h2:") && !jdbcUrl.contains("tcp://")) {
-            if(jdbcUrl.contains(";")){ //it indicates that url contains key/value parameters (like ;DB_CLOSE_ON_EXIT=FALSE)
-                result = jdbcUrl.substring(0, jdbcUrl.indexOf(";")) + "tcp://localhost/target/./persistence-test" + jdbcUrl.substring(jdbcUrl.indexOf(";"));
-            } else {
-                result = jdbcUrl + "tcp://localhost/target/./persistence-test";
-            }
+        if (jdbcUrl.startsWith("jdbc:h2:") && !jdbcUrl.contains("tcp://") && !jdbcUrl.contains("mem:")) {
+            result = jdbcUrl + "tcp://localhost/target/./persistence-test";
         }
 
         return result;
