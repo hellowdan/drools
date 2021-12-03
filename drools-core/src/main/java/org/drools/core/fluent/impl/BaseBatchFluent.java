@@ -130,6 +130,11 @@ public class BaseBatchFluent<T, E> implements ContextFluent<T, E> {
     }
 
     @Override
+    public T leaveConversation() {
+        return null;
+    }
+
+    @Override
     public T endConversation(String uuid) {
         fluentCtx.addCommand(new EndConversationCommand(uuid));
         return (T) this;
