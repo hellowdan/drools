@@ -31,6 +31,11 @@ import java.io.PrintStream;
 
 public class KieModuleModelExample {
 
+    /**
+     * A property that will tell which version to use on the test side - necessary for one-offs testing
+     */
+    private final boolean useBaseVersion = Boolean.parseBoolean(System.getProperty("useBaseVersion"));
+
     public void go(PrintStream out) {
         KieServices ks = KieServices.Factory.get();
         KieFileSystem kfs = ks.newKieFileSystem();
@@ -38,7 +43,9 @@ public class KieModuleModelExample {
         Resource ex1Res = ks.getResources().newFileSystemResource(getFile("named-kiesession"));
         Resource ex2Res = ks.getResources().newFileSystemResource(getFile("kiebase-inclusion"));
 
-        ReleaseId rid = ks.newReleaseId("org.drools", "kiemodulemodel-example", Drools.getFullVersion());
+        final String fullVersion = this.useBaseVersion ? KieModuleModelExample.class.getPackage().getImplementationVersion() : Drools.getFullVersion();
+
+        ReleaseId rid = ks.newReleaseId("org.drools", "kiemodulemodel-example", fullVersion);
         kfs.generateAndWritePomXML(rid);
 
         KieModuleModel kModuleModel = ks.newKieModuleModel();

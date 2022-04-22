@@ -70,6 +70,11 @@ public class DMNRuntimeListenerTest extends BaseInterpretedVsCompiledTest {
 
     public static final Logger LOG = LoggerFactory.getLogger(DMNRuntimeListenerTest.class);
 
+    /**
+     * A property that will tell which version to use on the test side - necessary for one-offs testing
+     */
+    private final boolean useBaseVersion = Boolean.parseBoolean(System.getProperty("useBaseVersion"));
+
     public static final Map<String, Object> TEST_METADATA = new HashMap<String, Object>() {{
         put("uuid", UUID.fromString("8ad1cbec-55f7-48aa-ae86-34f5e9bf33e8"));
         put("fieldName", "fieldValue");
@@ -109,11 +114,14 @@ public class DMNRuntimeListenerTest extends BaseInterpretedVsCompiledTest {
                             "    <property key=\"org.kie.dmn.runtime.listeners.X\" value=\"com.acme.TestListener\"/>\n" +
                             "  </configuration>\n" +
                             "</kmodule>");
+
+        final String fullVersion = this.useBaseVersion ? DMNRuntimeListenerTest.class.getPackage().getImplementationVersion() : Drools.getFullVersion();
+
         kfs.writePomXML(DMNClassloaderTest.getPom(releaseId,
-                                                  ks.newReleaseId("org.kie", "kie-dmn-api", Drools.getFullVersion()),
-                                                  ks.newReleaseId("org.kie", "kie-dmn-model", Drools.getFullVersion()),
-                                                  ks.newReleaseId("org.kie", "kie-api", Drools.getFullVersion()),
-                                                  ks.newReleaseId("org.kie", "kie-internal", Drools.getFullVersion())
+                                                  ks.newReleaseId("org.kie", "kie-dmn-api", fullVersion),
+                                                  ks.newReleaseId("org.kie", "kie-dmn-model", fullVersion),
+                                                  ks.newReleaseId("org.kie", "kie-api", fullVersion),
+                                                  ks.newReleaseId("org.kie", "kie-internal", fullVersion)
                                                   )
                         );
         final KieBuilder kieBuilder = ks.newKieBuilder(kfs).buildAll();

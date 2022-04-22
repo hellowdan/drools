@@ -24,11 +24,18 @@ import java.io.PrintStream;
 
 public class KieContainerFromKieRepoExample {
 
+    /**
+     * A property that will tell which version to use on the test side - necessary for one-offs testing
+     */
+    private final boolean useBaseVersion = Boolean.parseBoolean(System.getProperty("useBaseVersion"));
+
     public void go(PrintStream out) {
         KieServices ks = KieServices.Factory.get();
 
+        final String fullVersion = this.useBaseVersion ? KieContainerFromKieRepoExample.class.getPackage().getImplementationVersion() : Drools.getFullVersion();
+
         // Install example1 in the local maven repo before to do this
-        KieContainer kContainer = ks.newKieContainer(ks.newReleaseId("org.drools", "named-kiesession", Drools.getFullVersion()));
+        KieContainer kContainer = ks.newKieContainer(ks.newReleaseId("org.drools", "named-kiesession", fullVersion));
 
         KieSession kSession = kContainer.newKieSession("ksession1");
         kSession.setGlobal("out", out);
