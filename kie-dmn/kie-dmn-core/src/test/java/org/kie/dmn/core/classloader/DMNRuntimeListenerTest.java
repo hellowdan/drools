@@ -16,12 +16,20 @@
 
 package org.kie.dmn.core.classloader;
 
+import java.io.File;
+import java.io.IOException;
+import java.net.URISyntaxException;
+import java.net.URL;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
+import org.apache.commons.io.FileUtils;
 import org.drools.core.util.Drools;
 import org.junit.Test;
 import org.kie.api.KieServices;
@@ -48,16 +56,22 @@ import org.kie.dmn.api.core.event.DMNRuntimeEventListener;
 import org.kie.dmn.core.BaseInterpretedVsCompiledTest;
 import org.kie.dmn.core.api.DMNFactory;
 import org.kie.dmn.core.util.DMNRuntimeUtil;
+import org.kie.maven.integration.embedder.MavenSettings;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.kie.maven.integration.embedder.MavenSettings.CUSTOM_SETTINGS_PROPERTY;
 
 public class DMNRuntimeListenerTest extends BaseInterpretedVsCompiledTest {
 
     public DMNRuntimeListenerTest(final boolean useExecModelCompiler) {
         super(useExecModelCompiler);
     }
+
+    private static final Pattern PLACEHOLDER_PATTERN = Pattern.compile("\\$\\{(.*?)\\}");
+    private static final String SETTINGS_TEMPLATE_PATH = "org/kie/dmn/core/settings.xml.template";
+    protected static final File SETTINGS = new File("target/settings.xml").getAbsoluteFile();
 
     public static final Logger LOG = LoggerFactory.getLogger(DMNRuntimeListenerTest.class);
 
@@ -91,49 +105,64 @@ public class DMNRuntimeListenerTest extends BaseInterpretedVsCompiledTest {
         final KieServices ks = KieServices.Factory.get();
         ReleaseId releaseId = ks.newReleaseId("org.kie", "dmn-test-" + UUID.randomUUID(), "1.0");
 
-        final KieFileSystem kfs = ks.newKieFileSystem();
-        kfs.write("src/main/java/com/acme/TestListener.java", javaSource);
-        kfs.write(ks.getResources().newClassPathResource("Greetings.dmn", this.getClass()));
-        kfs.writeKModuleXML("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n" +
-                            "<kmodule xmlns=\"http://www.drools.org/xsd/kmodule\">\n" +
-                            "  <configuration>\n" +
-                            "    <property key=\"org.kie.dmn.runtime.listeners.X\" value=\"com.acme.TestListener\"/>\n" +
-                            "  </configuration>\n" +
-                            "</kmodule>");
-        kfs.writePomXML(DMNClassloaderTest.getPom(releaseId,
-                                                  ks.newReleaseId("org.kie", "kie-dmn-api", Drools.getFullVersion()),
-                                                  ks.newReleaseId("org.kie", "kie-dmn-model", Drools.getFullVersion()),
-                                                  ks.newReleaseId("org.kie", "kie-api", Drools.getFullVersion()),
-                                                  ks.newReleaseId("org.kie", "kie-internal", Drools.getFullVersion())
-                                                  )
-                        );
-        final KieBuilder kieBuilder = ks.newKieBuilder(kfs).buildAll();
-        assertThat(kieBuilder.getResults().getMessages()).as(kieBuilder.getResults().getMessages().toString()).isEmpty();
+        createSettingsXmlFromTemplate();
 
-        final KieContainer kieContainer = ks.newKieContainer(releaseId);
+        String oldSettingsXmlPath = System.getProperty( CUSTOM_SETTINGS_PROPERTY );
+        try {
+            System.setProperty( CUSTOM_SETTINGS_PROPERTY, SETTINGS.toString() );
+            MavenSettings.reinitSettings();
 
-        final DMNRuntime runtime = DMNRuntimeUtil.typeSafeGetKieRuntime(kieContainer);
-        assertThat(runtime).isNotNull();
+            final KieFileSystem kfs = ks.newKieFileSystem();
+            kfs.write("src/main/java/com/acme/TestListener.java", javaSource);
+            kfs.write(ks.getResources().newClassPathResource("Greetings.dmn", this.getClass()));
+            kfs.writeKModuleXML("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n" +
+                                "<kmodule xmlns=\"http://www.drools.org/xsd/kmodule\">\n" +
+                                "  <configuration>\n" +
+                                "    <property key=\"org.kie.dmn.runtime.listeners.X\" value=\"com.acme.TestListener\"/>\n" +
+                                "  </configuration>\n" +
+                                "</kmodule>");
+            kfs.writePomXML(DMNClassloaderTest.getPom(releaseId,
+                                                      ks.newReleaseId("org.kie", "kie-dmn-api", Drools.getFullVersion()),
+                                                      ks.newReleaseId("org.kie", "kie-dmn-model", Drools.getFullVersion()),
+                                                      ks.newReleaseId("org.kie", "kie-api", Drools.getFullVersion()),
+                                                      ks.newReleaseId("org.kie", "kie-internal", Drools.getFullVersion())
+                                                      )
+                            );
+            final KieBuilder kieBuilder = ks.newKieBuilder(kfs).buildAll();
+            assertThat(kieBuilder.getResults().getMessages()).as(kieBuilder.getResults().getMessages().toString()).isEmpty();
 
-        final DMNModel dmnModel = runtime.getModel("http://www.trisotech.com/definitions/_2027051c-0030-40f1-8b96-1b1422f8b257", "Drawing 1");
-        assertThat(dmnModel).isNotNull();
-        assertThat(dmnModel.hasErrors()).as(DMNRuntimeUtil.formatMessages(dmnModel.getMessages())).isFalse();
+            final KieContainer kieContainer = ks.newKieContainer(releaseId);
 
-        final DMNContext context = newEmptyContextWithTestMetadata();
-        context.set("Name", "John Doe");
+            final DMNRuntime runtime = DMNRuntimeUtil.typeSafeGetKieRuntime(kieContainer);
+            assertThat(runtime).isNotNull();
 
-        final DMNResult dmnResult = runtime.evaluateAll(dmnModel, context);
-        LOG.debug("{}", dmnResult);
-        assertThat(dmnResult.hasErrors()).as(DMNRuntimeUtil.formatMessages(dmnResult.getMessages())).isFalse();
+            final DMNModel dmnModel = runtime.getModel("http://www.trisotech.com/definitions/_2027051c-0030-40f1-8b96-1b1422f8b257", "Drawing 1");
+            assertThat(dmnModel).isNotNull();
+            assertThat(dmnModel.hasErrors()).as(DMNRuntimeUtil.formatMessages(dmnModel.getMessages())).isFalse();
 
-        final DMNContext result = dmnResult.getContext();
-        assertThat(result.get("Greeting the Name")).isEqualTo("Hello John Doe");
-        assertThat(result.getMetadata().asMap()).isEqualTo(TEST_METADATA);
+            final DMNContext context = newEmptyContextWithTestMetadata();
+            context.set("Name", "John Doe");
 
-        Object listenerInstance = kieContainer.getClassLoader().loadClass("com.acme.TestListener").newInstance();
-        @SuppressWarnings("unchecked") // this was by necessity classloaded
-        List<Object> results = (List<Object>) listenerInstance.getClass().getMethod("getResults").invoke(listenerInstance);
-        assertThat(results).contains("Hello John Doe");
+            final DMNResult dmnResult = runtime.evaluateAll(dmnModel, context);
+            LOG.debug("{}", dmnResult);
+            assertThat(dmnResult.hasErrors()).as(DMNRuntimeUtil.formatMessages(dmnResult.getMessages())).isFalse();
+
+            final DMNContext result = dmnResult.getContext();
+            assertThat(result.get("Greeting the Name")).isEqualTo("Hello John Doe");
+            assertThat(result.getMetadata().asMap()).isEqualTo(TEST_METADATA);
+
+            Object listenerInstance = kieContainer.getClassLoader().loadClass("com.acme.TestListener").newInstance();
+            @SuppressWarnings("unchecked") // this was by necessity classloaded
+            List<Object> results = (List<Object>) listenerInstance.getClass().getMethod("getResults").invoke(listenerInstance);
+            assertThat(results).contains("Hello John Doe");
+        } finally {
+            if (oldSettingsXmlPath == null) {
+                System.clearProperty( CUSTOM_SETTINGS_PROPERTY );
+            } else {
+                System.setProperty( CUSTOM_SETTINGS_PROPERTY, oldSettingsXmlPath );
+            }
+            MavenSettings.reinitSettings();
+        }
     }
 
     @Test
@@ -348,5 +377,58 @@ public class DMNRuntimeListenerTest extends BaseInterpretedVsCompiledTest {
             afterEvent = event;
         }
 
+    }
+
+    public static void createSettingsXmlFromTemplate() throws IOException, URISyntaxException {
+
+      /*comments session below has been kept for local testing purposes with the patched code.
+      remove the comments if you'd like to add these system properties.
+      these lines should be removed if the code is committed*/
+//        System.setProperty("nexus.host", "bxms-qe.rhev-ci-vms.eng.rdu2.redhat.com");
+//        System.setProperty("nexus.group", "serverlesslogic-1.24-nightly");
+
+        URL resource = DMNRuntimeListenerTest.class.getClassLoader().getResource(SETTINGS_TEMPLATE_PATH);
+        File settingsTemplate = new File(resource.toURI());
+        String settingsXmlContent = FileUtils.readFileToString(settingsTemplate, StandardCharsets.UTF_8);
+        final String mavenRepoPath = determineLocalMavenRepoPath();
+        settingsXmlContent = settingsXmlContent.replaceAll("@MAVEN_REPO_PATH@", Matcher.quoteReplacement(mavenRepoPath));
+        settingsXmlContent = replaceSystemProperties(settingsXmlContent);
+        FileUtils.write(SETTINGS, settingsXmlContent, StandardCharsets.UTF_8);
+    }
+
+    public static String replaceSystemProperties(final String input) {
+        final Matcher matcher = PLACEHOLDER_PATTERN.matcher(input);
+        final StringBuffer sb = new StringBuffer();
+
+        if (resolveSystemProperties()) {
+            while (matcher.find()) {
+                String placeholder = matcher.group(1);
+                String placeholderValue = System.getProperty(placeholder);
+                matcher.appendReplacement(sb, placeholderValue);
+            }
+            matcher.appendTail(sb);
+            return sb.toString();
+        } else return input;
+    }
+
+    private static boolean resolveSystemProperties() {
+        String propertyNexusHostValue = System.getProperty("nexus.host");
+        String propertyNexusGroupValue = System.getProperty("nexus.group");
+        if ((propertyNexusHostValue == null)||(propertyNexusGroupValue == null)) {
+            return false;
+        }
+        return true;
+    }
+
+    private static String determineLocalMavenRepoPath() throws IOException {
+        String sysPropValue = System.getProperty("local.repo.dir");
+        File mavenRepoPath;
+        if (sysPropValue != null && sysPropValue != "") {
+            return sysPropValue;
+        } else {
+            // use the default location
+            mavenRepoPath = new File("../maven-repo").getCanonicalFile();
+            return mavenRepoPath.getAbsolutePath();
+        }
     }
 }
