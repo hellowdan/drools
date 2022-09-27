@@ -16,13 +16,21 @@
 
 package org.kie.dmn.core.classloader;
 
+import java.io.File;
+import java.io.IOException;
+import java.net.URL;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
+import org.apache.commons.io.FileUtils;
 import org.drools.core.util.Drools;
+import org.junit.Before;
+import org.junit.BeforeClass;
 import org.junit.Test;
 import org.kie.api.KieServices;
 import org.kie.api.builder.KieBuilder;
@@ -48,6 +56,7 @@ import org.kie.dmn.api.core.event.DMNRuntimeEventListener;
 import org.kie.dmn.core.BaseInterpretedVsCompiledTest;
 import org.kie.dmn.core.api.DMNFactory;
 import org.kie.dmn.core.util.DMNRuntimeUtil;
+import org.kie.maven.integration.embedder.MavenSettings;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -59,12 +68,85 @@ public class DMNRuntimeListenerTest extends BaseInterpretedVsCompiledTest {
         super(useExecModelCompiler);
     }
 
+    private static final Pattern PLACEHOLDER_PATTERN = Pattern.compile("\\$\\{(.*?)\\}");
+    private static final String SETTINGS_TEMPLATE_PATH = "/org/kie/dmn/core/classloader/DMNRuntimeListenerSettings.xml.template";
+    private static final String CUSTOM_SETTINGS_PROPERTY = "kie.maven.settings.custom";
+    private static final File SETTINGS = new File("target/settings.xml").getAbsoluteFile();
+
     public static final Logger LOG = LoggerFactory.getLogger(DMNRuntimeListenerTest.class);
 
     public static final Map<String, Object> TEST_METADATA = new HashMap<String, Object>() {{
         put("uuid", UUID.fromString("8ad1cbec-55f7-48aa-ae86-34f5e9bf33e8"));
         put("fieldName", "fieldValue");
     }};
+
+    public static void createSettingsXmlFromTemplate() throws IOException {
+        URL settingsFilePath = org.kie.dmn.core.classloader.DMNRuntimeListenerTest.class.getResource(SETTINGS_TEMPLATE_PATH);
+        File settingsTemplate = new File(settingsFilePath.getFile());
+        String settingsXmlContent = FileUtils.readFileToString(settingsTemplate);
+        final String mavenRepoPath = determineLocalMavenRepoPath();
+        settingsXmlContent = settingsXmlContent.replaceAll("@MAVEN_REPO_PATH@", Matcher.quoteReplacement(mavenRepoPath));
+        settingsXmlContent = replaceSystemProperties(settingsXmlContent);
+        FileUtils.write(SETTINGS, settingsXmlContent);
+        LOG.info("Created settings.xml with local Maven repo: {}", mavenRepoPath);
+    }
+
+    private static String determineLocalMavenRepoPath() throws IOException {
+        String sysPropValue = System.getProperty("local.repo.dir");
+        File mavenRepoPath;
+        if (sysPropValue != null && sysPropValue != "") {
+            return sysPropValue;
+        } else {
+            // use the default location
+            mavenRepoPath = new File("../maven-repo").getCanonicalFile();
+            return mavenRepoPath.getAbsolutePath();
+        }
+    }
+
+    public static String replaceSystemProperties(final String input) {
+        final Matcher matcher = PLACEHOLDER_PATTERN.matcher(input);
+        final StringBuffer sb = new StringBuffer();
+        while (matcher.find()) {
+            String placeholder = matcher.group(1);
+            String placeholderValue = resolveSystemProperty(placeholder);
+            matcher.appendReplacement(sb, placeholderValue);
+        }
+        matcher.appendTail(sb);
+
+        return sb.toString();
+    }
+
+    private static String resolveSystemProperty(final String propertyName) {
+        String propertyValue = System.getProperty(propertyName);
+        if (propertyValue == null) {
+            throw new IllegalArgumentException(String.format("System property %s does not exist!", propertyName));
+        }
+        return propertyValue;
+    }
+
+    private static boolean hasCustomSystemProperties() {
+        String hostValue = System.getProperty("nexus.host");
+        String groupValue = System.getProperty("nexus.group");
+        if ((hostValue == null) || (groupValue == null)) {
+            return false;
+        }
+        return true;
+    }
+
+    @BeforeClass
+    public static void setup() throws Exception {
+        if (hasCustomSystemProperties()) {
+            createSettingsXmlFromTemplate();
+        }
+    }
+
+    @Before
+    public void setKiePathToSettings() {
+        if (hasCustomSystemProperties()) {
+            System.setProperty(CUSTOM_SETTINGS_PROPERTY, SETTINGS.getPath());
+            MavenSettings.reinitSettings();
+        }
+    }
 
     @Test
     public void testBasicListenerFromKModule() throws Exception {
