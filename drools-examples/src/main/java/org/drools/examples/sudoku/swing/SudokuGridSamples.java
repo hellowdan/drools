@@ -53,11 +53,11 @@ public class SudokuGridSamples {
                {6, null, null, null, 3, null, null, null, 9},
                {1, 3, 2, null, null, null, 4, 8, 5}}
       );
-      
+
       samples.put
       (
         "Hard 1",
-        new Integer[][] 
+        new Integer[][]
        {{null, null, null, null, 5, 1, null, 8, null},
                {null, 8, null, null, 4, null, null, null, 5},
                {null, null, 3, null, null, null, 2, null, null},
@@ -68,11 +68,11 @@ public class SudokuGridSamples {
                {5, null, null, null, 9, null, null, 2, null},
                {null, 9, null, 7, 1, null, null, null, null}}
       );
-      
+
       samples.put
       (
         "Hard 2",
-        new Integer[][] 
+        new Integer[][]
        {{null,null,null,6,null,null,1,null,null},
            {null,null,null,null,null,5,null,null,6},
            {5,null,7,null,null,null,2,3,null},
@@ -87,7 +87,7 @@ public class SudokuGridSamples {
       samples.put
       (
         "Hard 3",
-        new Integer[][] 
+        new Integer[][]
        {{null,8,null,null,null,6,null,null,5},
                {2,null,null,null,null,null,4,8,null},
                {null,null,9,null,null,8,null,1,null},
@@ -98,11 +98,11 @@ public class SudokuGridSamples {
                {null,7,6,null,null,null,null,null,3},
                {1,null,null,7,null,null,null,5,null}}
       );
-      
+
       samples.put
       (
         "Hard 4",
-        new Integer[][] 
+        new Integer[][]
        {{null,null,null,null,null,4,null,9,5},
                {6,7,null,5,null,null,null,1,null},
                {null,null,null,6,null,9,null,null,null},
@@ -112,7 +112,7 @@ public class SudokuGridSamples {
                {null,null,null,3,null,5,null,null,null},
                {null,6,null,null,null,1,null,5,8},
                {7,3,null,9,null,null,null,null,null}}
-      );    
+      );
       
       samples.put
       (

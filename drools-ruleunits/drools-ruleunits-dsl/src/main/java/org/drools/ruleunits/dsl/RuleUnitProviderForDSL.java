@@ -20,17 +20,17 @@ import java.util.Map;
 import org.drools.core.common.ReteEvaluator;
 import org.drools.core.impl.RuleBase;
 import org.drools.core.reteoo.ReteDumper;
-import org.drools.model.Global;
+import org.drools.model.Model;
 import org.drools.modelcompiler.KieBaseBuilder;
 import org.drools.ruleunits.api.DataSource;
 import org.drools.ruleunits.api.RuleUnit;
 import org.drools.ruleunits.api.RuleUnitData;
 import org.drools.ruleunits.api.RuleUnitInstance;
+import org.drools.ruleunits.api.conf.RuleConfig;
 import org.drools.ruleunits.impl.EntryPointDataProcessor;
 import org.drools.ruleunits.impl.ReteEvaluatorBasedRuleUnitInstance;
 import org.drools.ruleunits.impl.RuleUnitProviderImpl;
 import org.drools.ruleunits.impl.factory.AbstractRuleUnit;
-import org.drools.ruleunits.impl.factory.AbstractRuleUnits;
 import org.drools.ruleunits.impl.sessions.RuleUnitExecutorImpl;
 import org.kie.api.runtime.rule.EntryPoint;
 
@@ -44,72 +44,66 @@ public class RuleUnitProviderForDSL extends RuleUnitProviderImpl {
     }
 
     @Override
-    protected <T extends RuleUnitData> Map<String, RuleUnit> generateRuleUnit(T ruleUnitData) {
+    protected <T extends RuleUnitData> Map<Class<? extends RuleUnitData>, RuleUnit> generateRuleUnit(T ruleUnitData) {
         if (ruleUnitData instanceof RuleUnitDefinition) {
             RuleUnitDefinition ruleUnitDef = (RuleUnitDefinition) ruleUnitData;
             RulesFactory rulesFactory = new RulesFactory(ruleUnitDef);
             ruleUnitDef.defineRules(rulesFactory);
-            RuleUnit<T> ruleUnit = new ModelRuleUnit<>((Class<T>) ruleUnitData.getClass(), rulesFactory);
-            return Map.of(ruleUnitData.getClass().getCanonicalName(), ruleUnit);
+            RuleUnit<T> ruleUnit = new ModelRuleUnit<>((Class<T>) ruleUnitData.getClass(), rulesFactory.toModel(), rulesFactory.getUnitGlobalsResolver());
+            return Map.of(ruleUnitData.getClass(), ruleUnit);
         }
         return super.generateRuleUnit(ruleUnitData);
     }
 
     public static class ModelRuleUnit<T extends RuleUnitData> extends AbstractRuleUnit<T> {
 
-        private final RulesFactory rulesFactory;
+        private final UnitGlobalsResolver unitGlobalsResolver;
         private final RuleBase ruleBase;
 
-        private ModelRuleUnit(Class<T> type, RulesFactory rulesFactory) {
-            super(type.getCanonicalName(), DummyRuleUnits.INSTANCE);
-            this.rulesFactory = rulesFactory;
-            this.ruleBase = KieBaseBuilder.createKieBaseFromModel( rulesFactory.toModel() );
+        public ModelRuleUnit(Class<T> type, Model model, UnitGlobalsResolver unitGlobalsResolver) {
+            super(type);
+            this.unitGlobalsResolver = unitGlobalsResolver;
+            this.ruleBase = KieBaseBuilder.createKieBaseFromModel( model );
             if (DUMP_GENERATED_RETE) {
                 ReteDumper.dumpRete(this.ruleBase);
             }
         }
 
         @Override
-        public RuleUnitInstance<T> internalCreateInstance(T data) {
+        public RuleUnitInstance<T> internalCreateInstance(T data, RuleConfig ruleConfig) {
             ReteEvaluator reteEvaluator = new RuleUnitExecutorImpl(ruleBase);
-            return new DSLRuleUnitInstance<>(this, data, reteEvaluator, rulesFactory);
-        }
-    }
-
-    public static class DummyRuleUnits extends AbstractRuleUnits {
-
-        static final DummyRuleUnits INSTANCE = new DummyRuleUnits();
-
-        @Override
-        protected RuleUnit<?> create(String fqcn) {
-            throw new UnsupportedOperationException();
+            return new DSLRuleUnitInstance<>(this, data, reteEvaluator, unitGlobalsResolver, ruleConfig);
         }
     }
 
     public static class DSLRuleUnitInstance<T extends RuleUnitData> extends ReteEvaluatorBasedRuleUnitInstance<T> {
 
-        public DSLRuleUnitInstance(RuleUnit<T> unit, T workingMemory, ReteEvaluator reteEvaluator, RulesFactory rulesFactory) {
+        public DSLRuleUnitInstance(RuleUnit<T> unit, T workingMemory, ReteEvaluator reteEvaluator, UnitGlobalsResolver unitGlobalsResolver) {
             super(unit, workingMemory, reteEvaluator);
-            internalBind(reteEvaluator, rulesFactory);
+            internalBind(unitGlobalsResolver);
+        }
+
+        public DSLRuleUnitInstance(RuleUnit<T> unit, T workingMemory, ReteEvaluator reteEvaluator, UnitGlobalsResolver unitGlobalsResolver, RuleConfig ruleConfig) {
+            super(unit, workingMemory, reteEvaluator, ruleConfig);
+            internalBind(unitGlobalsResolver);
         }
 
         protected void bind(ReteEvaluator reteEvaluator, T workingMemory) {
             // empty to allow a subsequent bind also using the RulesContext
         }
 
-        private void internalBind(ReteEvaluator reteEvaluator, RulesFactory rulesFactory) {
-            for (Map.Entry<Object, Global> entry : rulesFactory.getGlobals().entrySet()) {
-                String dataSourceName = entry.getValue().getName();
-                Object v = entry.getKey();
+        private void internalBind(UnitGlobalsResolver unitGlobalsResolver) {
+            for (String dataSourceName : unitGlobalsResolver.getGlobalNames()) {
+                Object v = unitGlobalsResolver.resolveGlobalObject(ruleUnitData(), dataSourceName);
                 if (v instanceof DataSource) {
                     DataSource<?> o = (DataSource<?>) v;
-                    EntryPoint ep = reteEvaluator.getEntryPoint(dataSourceName);
+                    EntryPoint ep = getEvaluator().getEntryPoint(dataSourceName);
                     if (ep != null) { // can be null if this DataSource isn't used in the LHS of any rule
                         o.subscribe(new EntryPointDataProcessor(ep));
                     }
                 }
                 try {
-                    reteEvaluator.setGlobal(dataSourceName, v);
+                    getEvaluator().setGlobal(dataSourceName, v);
                 } catch (RuntimeException e) {
                     // ignore if the global doesn't exist
                 }

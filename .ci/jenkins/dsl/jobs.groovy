@@ -40,9 +40,26 @@ Map getMultijobPRConfig(Folder jobFolder) {
                     ADDITIONAL_TIMEOUT: jobFolder.isNative() || jobFolder.isMandrel() ? '360' : '210',
                 ]
             ], [
-                id: 'kogito-examples',
+                id: 'kogito-quarkus-examples',
                 repository: 'kogito-examples',
                 dependsOn: 'kogito-apps',
+                env : [
+                    KOGITO_EXAMPLES_SUBFOLDER_POM: 'kogito-quarkus-examples/',
+                ],
+            ], [
+                id: 'kogito-springboot-examples',
+                repository: 'kogito-examples',
+                dependsOn: 'kogito-apps',
+                env : [
+                    KOGITO_EXAMPLES_SUBFOLDER_POM: 'kogito-springboot-examples/',
+                ],
+            ], [
+                id: 'serverless-workflow-examples',
+                repository: 'kogito-examples',
+                dependsOn: 'kogito-apps',
+                env : [
+                    KOGITO_EXAMPLES_SUBFOLDER_POM: 'serverless-workflow-examples/',
+                ],
             ]
         ]
     ]
@@ -56,18 +73,22 @@ Map getMultijobPRConfig(Folder jobFolder) {
 KogitoJobUtils.createAllEnvsPerRepoPRJobs(this) { jobFolder -> getMultijobPRConfig(jobFolder) }
 
 // Init branch
-setupInitBranchJob()
+createSetupBranchJob()
 
 // Nightly jobs
 setupDeployJob(Folder.NIGHTLY)
-setupSpecificNightlyJob(Folder.NIGHTLY_NATIVE)
+setupSpecificBuildChainNightlyJob(Folder.NIGHTLY_NATIVE)
 
-setupSpecificNightlyJob(Folder.NIGHTLY_QUARKUS_MAIN)
-setupSpecificNightlyJob(Folder.NIGHTLY_QUARKUS_BRANCH)
+setupSpecificBuildChainNightlyJob(Folder.NIGHTLY_QUARKUS_MAIN)
+setupSpecificBuildChainNightlyJob(Folder.NIGHTLY_QUARKUS_BRANCH)
 
-setupSpecificNightlyJob(Folder.NIGHTLY_MANDREL)
-setupSpecificNightlyJob(Folder.NIGHTLY_MANDREL_LTS)
-setupSpecificNightlyJob(Folder.NIGHTLY_QUARKUS_LTS)
+setupSpecificBuildChainNightlyJob(Folder.NIGHTLY_MANDREL)
+setupSpecificBuildChainNightlyJob(Folder.NIGHTLY_MANDREL_LTS)
+setupSpecificBuildChainNightlyJob(Folder.NIGHTLY_QUARKUS_LTS)
+
+// Jobs with integration branch
+setupSpecificNightlyJob(Folder.NIGHTLY_QUARKUS_MAIN, true)
+setupSpecificNightlyJob(Folder.NIGHTLY_QUARKUS_LTS, true)
 
 // Release jobs
 setupDeployJob(Folder.RELEASE)
@@ -84,25 +105,32 @@ KogitoJobUtils.createQuarkusUpdateToolsJob(this, 'drools', [
 // Methods
 /////////////////////////////////////////////////////////////////
 
-void setupSpecificNightlyJob(Folder specificNightlyFolder) {
+void setupSpecificNightlyJob(Folder specificNightlyFolder, boolean useIntegrationBranch = false) {
     String envName = specificNightlyFolder.environment.toName()
-    def jobParams = KogitoJobUtils.getBasicJobParams(this, 'drools', specificNightlyFolder, "${jenkins_path}/Jenkinsfile.specific_nightly", "Drools Nightly ${envName}")
+    def jobParams = KogitoJobUtils.getBasicJobParams(this, "drools${useIntegrationBranch ? '-integration-branch' : ''}", specificNightlyFolder, "${jenkins_path}/Jenkinsfile.specific_nightly", "Drools Nightly ${envName}")
     KogitoJobUtils.setupJobParamsDefaultMavenConfiguration(this, jobParams)
     jobParams.triggers = [ cron : '@midnight' ]
     jobParams.env.putAll([
         JENKINS_EMAIL_CREDS_ID: "${JENKINS_EMAIL_CREDS_ID}",
-        NOTIFICATION_JOB_NAME: "${envName} check"
+        NOTIFICATION_JOB_NAME: "${envName} check",
+        USE_INTEGRATION_BRANCH : useIntegrationBranch,
     ])
     KogitoJobTemplate.createPipelineJob(this, jobParams)?.with {
         parameters {
             stringParam('BUILD_BRANCH_NAME', "${GIT_BRANCH}", 'Set the Git branch to checkout')
             stringParam('GIT_AUTHOR', "${GIT_AUTHOR_NAME}", 'Set the Git author to checkout')
+            stringParam('GIT_AUTHOR_CREDS_ID', "${GIT_AUTHOR_CREDENTIALS_ID}", 'Set the Git author creds id')
         }
     }
 }
 
-void setupInitBranchJob() {
-    def jobParams = KogitoJobUtils.getBasicJobParams(this, 'drools', Folder.INIT_BRANCH, "${jenkins_path}/Jenkinsfile.init-branch", 'Drools Init branch')
+void setupSpecificBuildChainNightlyJob(Folder specificNightlyFolder) {
+    String envName = specificNightlyFolder.environment.toName()
+    KogitoJobUtils.createNightlyBuildChainBuildAndTestJobForCurrentRepo(this, specificNightlyFolder, true, envName)
+}
+
+void createSetupBranchJob() {
+    def jobParams = KogitoJobUtils.getBasicJobParams(this, 'drools', Folder.SETUP_BRANCH, "${jenkins_path}/Jenkinsfile.setup-branch", 'Drools Init branch')
     KogitoJobUtils.setupJobParamsDefaultMavenConfiguration(this, jobParams)
     jobParams.env.putAll([
         REPO_NAME: 'drools',
@@ -114,6 +142,8 @@ void setupInitBranchJob() {
         MAVEN_SETTINGS_CONFIG_FILE_ID: "${MAVEN_SETTINGS_FILE_ID}",
         MAVEN_DEPENDENCIES_REPOSITORY: "${MAVEN_ARTIFACTS_REPOSITORY}",
         MAVEN_DEPLOY_REPOSITORY: "${MAVEN_ARTIFACTS_REPOSITORY}",
+
+        IS_MAIN_BRANCH: "${Utils.isMainBranch(this)}"
     ])
     KogitoJobTemplate.createPipelineJob(this, jobParams)?.with {
         parameters {

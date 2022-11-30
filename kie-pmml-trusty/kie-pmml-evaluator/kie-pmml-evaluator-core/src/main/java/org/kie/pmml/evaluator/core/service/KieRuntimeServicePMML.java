@@ -15,7 +15,6 @@
  */
 package org.kie.pmml.evaluator.core.service;
 
-import java.util.Collections;
 import java.util.Optional;
 
 import org.kie.api.pmml.PMML4Result;
@@ -28,6 +27,7 @@ import org.kie.pmml.evaluator.core.PMMLRuntimeContextImpl;
 import org.kie.pmml.evaluator.core.model.EfestoInputPMML;
 import org.kie.pmml.evaluator.core.model.EfestoOutputPMML;
 
+import static org.kie.pmml.commons.Constants.PMML_STRING;
 import static org.kie.pmml.evaluator.core.utils.PMMLRuntimeHelper.canManageEfestoInput;
 import static org.kie.pmml.evaluator.core.utils.PMMLRuntimeHelper.executeEfestoInputPMML;
 
@@ -51,6 +51,6 @@ public class KieRuntimeServicePMML implements KieRuntimeService<PMMLRuntimeConte
 
     @Override
     public String getModelType() {
-        return "pmml";
+        return PMML_STRING;
     }
 }

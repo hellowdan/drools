@@ -46,14 +46,14 @@ public class RuleTest {
             measurementUnit.getMeasurements().add(new Measurement("color", "blue"));
 
             LOG.info("Run query. Rules are also fired");
-            List<Measurement> queryResult = instance.executeQuery("FindColor").stream().map(tuple -> (Measurement) tuple.get("$m")).collect(toList());
+            List<Measurement> queryResult = instance.executeQuery("FindColor").toList("$m");
 
             assertEquals(3, queryResult.size());
             assertTrue("contains red", measurementUnit.getControlSet().contains("red"));
             assertTrue("contains green", measurementUnit.getControlSet().contains("green"));
             assertTrue("contains blue", measurementUnit.getControlSet().contains("blue"));
         } finally {
-            instance.dispose();
+            instance.close();
         }
     }
 }

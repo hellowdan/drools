@@ -15,9 +15,7 @@
  */
 package org.drools.ruleunits.api;
 
-import java.util.List;
-import java.util.Map;
-
+import org.kie.api.runtime.rule.QueryResults;
 import org.kie.api.time.SessionClock;
 
 /**
@@ -25,7 +23,7 @@ import org.kie.api.time.SessionClock;
  *
  * @param <T> The {@link RuleUnitData} for which this rule unit is generated.
  */
-public interface RuleUnitInstance<T extends RuleUnitData> {
+public interface RuleUnitInstance<T extends RuleUnitData> extends AutoCloseable {
 
     /**
      * The {@link RuleUnit} from which this RuleUnitInstance has been created.
@@ -50,10 +48,7 @@ public interface RuleUnitInstance<T extends RuleUnitData> {
      * @param arguments The arguments to be passed to the query
      * @return TODO this should return a {@link org.kie.api.runtime.rule.QueryResults}
      */
-    List<Map<String, Object>> executeQuery(String query, Object... arguments);
-
-    // TODO check if we want to keep this method (and also the RuleUnitQuery in the public API)
-    <Q> Q executeQuery(Class<? extends RuleUnitQuery<Q>> query);
+    QueryResults executeQuery(String query, Object... arguments);
 
     /**
      * @return the session clock instance used by this RuleUnitInstance
@@ -65,5 +60,6 @@ public interface RuleUnitInstance<T extends RuleUnitData> {
      * This method <b>must</b> always be called after finishing using the RuleUnitInstance, or the engine
      * will not free the memory it uses.
      */
-    void dispose();
+    @Override
+    void close();
 }

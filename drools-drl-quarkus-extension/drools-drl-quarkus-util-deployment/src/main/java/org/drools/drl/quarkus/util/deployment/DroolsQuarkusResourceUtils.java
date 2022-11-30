@@ -20,8 +20,10 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 import io.quarkus.arc.deployment.GeneratedBeanBuildItem;
 import io.quarkus.deployment.annotations.BuildProducer;
@@ -34,8 +36,12 @@ import org.drools.codegen.common.DroolsModelBuildContext;
 import org.drools.codegen.common.GeneratedFile;
 import org.drools.codegen.common.GeneratedFileType;
 import org.drools.codegen.common.context.QuarkusDroolsModelBuildContext;
+import org.drools.core.util.Drools;
+import org.drools.wiring.api.ComponentsSupplier;
+import org.jboss.jandex.ClassInfo;
 import org.jboss.jandex.DotName;
 import org.jboss.jandex.IndexView;
+import org.kie.api.internal.utils.KieService;
 import org.kie.memorycompiler.JavaCompiler;
 import org.kie.memorycompiler.JavaCompilerSettings;
 import org.slf4j.Logger;
@@ -58,6 +64,12 @@ public class DroolsQuarkusResourceUtils {
     }
 
     private static final Logger LOGGER = LoggerFactory.getLogger(DroolsQuarkusResourceUtils.class);
+
+    static {
+        if (Drools.isNativeImage() && !KieService.load(ComponentsSupplier.class).getClass().getSimpleName().equals("StaticComponentsSupplier")) {
+            throw new IllegalStateException("Cannot run quarkus extension in native mode with module org.drools:drools-wiring-dynamic. Please remove it from your classpath.");
+        }
+    }
 
     // since quarkus-maven-plugin is later phase of maven-resources-plugin,
     // need to manually late-provide the resource in the expected location for quarkus:dev phase --so not: writeGeneratedFile( f, resourcePath );
@@ -193,5 +205,36 @@ public class DroolsQuarkusResourceUtils {
                 "public class " + HOT_RELOAD_SUPPORT_CLASS + " {\n" +
                 "private static final String ID = \"" + UUID.randomUUID() + "\";\n" +
                 "}";
+    }
+
+    private static final DotName RULE_UNIT_DEF_INTERFACE = DotName.createSimple("org.drools.ruleunits.dsl.RuleUnitDefinition");
+
+    public static List<GeneratedFile> getRuleUnitDefProducerSource(IndexView indexView) {
+        return indexView.getAllKnownImplementors(RULE_UNIT_DEF_INTERFACE).stream()
+                .map(ClassInfo::name)
+                .map(DroolsQuarkusResourceUtils::generateRuleUnitDefProducerSource)
+                .collect(Collectors.toList());
+    }
+
+    private static final String RULE_UNIT_DEF_PRODUCER =
+            "import javax.enterprise.context.Dependent;\n" +
+            "import javax.enterprise.inject.Produces;\n" +
+            "\n" +
+            "import org.drools.ruleunits.api.RuleUnit;\n" +
+            "import org.drools.ruleunits.api.RuleUnitProvider;\n" +
+            "\n" +
+            "@Dependent\n" +
+            "public class $RULE_UNIT_NAME$Producer {\n" +
+            "\n" +
+            "    @Produces\n" +
+            "    public RuleUnit<$RULE_UNIT_NAME$> produceRuleUnit() {\n" +
+            "        return RuleUnitProvider.get().getRuleUnit(new $RULE_UNIT_NAME$());\n" +
+            "    }\n" +
+            "}\n";
+
+    private static GeneratedFile generateRuleUnitDefProducerSource(DotName ruleUnitDefName) {
+        String source = "package " + ruleUnitDefName.packagePrefix() + ";\n\n" +
+                RULE_UNIT_DEF_PRODUCER.replaceAll("\\$RULE_UNIT_NAME\\$", ruleUnitDefName.withoutPackagePrefix());
+        return new GeneratedFile(GeneratedFileType.SOURCE, ruleUnitDefName.toString().replace('.', '/') + "Producer.java", source);
     }
 }

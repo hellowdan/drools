@@ -90,9 +90,13 @@ public class DefaultKnowledgeHelper implements KnowledgeHelper, Externalizable {
         out.writeObject(reteEvaluator);
     }
 
-    public void setActivation(final Activation agendaItem) {
-        this.activation = agendaItem;
-        this.tuple = agendaItem.getTuple();
+    public void setActivation(final Activation activation) {
+        this.activation = activation;
+        this.tuple = activation.getTuple();
+    }
+
+    public Activation getActivation() {
+        return activation;
     }
 
     public void reset() {
@@ -273,7 +277,7 @@ public class DefaultKnowledgeHelper implements KnowledgeHelper, Externalizable {
         return toStatefulKnowledgeSession();
     }
 
-    protected StatefulKnowledgeSessionForRHS toStatefulKnowledgeSession() {
+    public StatefulKnowledgeSessionForRHS toStatefulKnowledgeSession() {
         if (wrappedEvaluator != null) {
             return wrappedEvaluator;
         }

@@ -18,13 +18,15 @@ package org.drools.ruleunits.impl;
 import org.drools.ruleunits.api.RuleUnit;
 import org.drools.ruleunits.api.RuleUnitData;
 import org.drools.ruleunits.api.RuleUnitInstance;
-import org.drools.ruleunits.api.RuleUnitQuery;
+import org.drools.ruleunits.api.RuleUnitProvider;
+import org.drools.ruleunits.api.conf.RuleConfig;
 
 public abstract class AbstractRuleUnitInstance<E, T extends RuleUnitData> implements RuleUnitInstance<T> {
 
     private final T unitMemory;
     private final RuleUnit<T> unit;
     protected final E evaluator;
+    protected RuleConfig ruleConfig = RuleUnitProvider.get().newRuleConfig();
 
     public AbstractRuleUnitInstance(RuleUnit<T> unit, T unitMemory, E evaluator) {
         this.unit = unit;
@@ -33,17 +35,13 @@ public abstract class AbstractRuleUnitInstance<E, T extends RuleUnitData> implem
         bind(evaluator, unitMemory);
     }
 
-    @Override
-    public <Q> Q executeQuery(Class<? extends RuleUnitQuery<Q>> query) {
-        return createRuleUnitQuery(query).execute();
-    }
-
-    protected <Q> RuleUnitQuery<Q> createRuleUnitQuery(Class<? extends RuleUnitQuery<Q>> query) {
-        try {
-            return query.getConstructor(RuleUnitInstance.class).newInstance(this);
-        } catch (ReflectiveOperationException e) {
-            throw new RuntimeException(e);
-        }
+    public AbstractRuleUnitInstance(RuleUnit<T> unit, T unitMemory, E evaluator, RuleConfig ruleConfig) {
+        this.unit = unit;
+        this.evaluator = evaluator;
+        this.unitMemory = unitMemory;
+        this.ruleConfig = ruleConfig;
+        addEventListeners();
+        bind(evaluator, unitMemory);
     }
 
     @Override
@@ -57,6 +55,10 @@ public abstract class AbstractRuleUnitInstance<E, T extends RuleUnitData> implem
 
     public E getEvaluator() {
         return evaluator;
+    }
+
+    protected void addEventListeners() {
+        // no-op by default
     }
 
     protected abstract void bind(E evaluator, T workingMemory);

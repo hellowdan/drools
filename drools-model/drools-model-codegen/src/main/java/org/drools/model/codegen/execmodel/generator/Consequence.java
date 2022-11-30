@@ -26,7 +26,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
-import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 import com.github.javaparser.ParseProblemException;
@@ -52,7 +51,6 @@ import com.github.javaparser.ast.type.Type;
 import org.drools.compiler.compiler.MissingDependencyError;
 import org.drools.core.common.TruthMaintenanceSystemFactory;
 import org.drools.core.factmodel.ClassDefinition;
-import org.drools.drl.ast.descr.RuleDescr;
 import org.drools.model.BitMask;
 import org.drools.model.bitmask.AllSetButLastBitMask;
 import org.drools.model.codegen.execmodel.PackageModel;
@@ -138,7 +136,7 @@ public class Consequence {
         this.packageModel = context.getPackageModel();
     }
 
-    public MethodCallExpr createCall(RuleDescr ruleDescr, String consequenceString, BlockStmt ruleVariablesBlock, boolean isBreaking) {
+    public MethodCallExpr createCall(String consequenceString, BlockStmt ruleVariablesBlock, boolean isBreaking) {
         BlockStmt ruleConsequence = null;
 
         if (context.getRuleDialect() == RuleContext.RuleDialect.JAVA) {
@@ -256,7 +254,7 @@ public class Consequence {
     private Set<String> extractUsedDeclarations(BlockStmt ruleConsequence, String consequenceString) {
         Set<String> existingDecls = new HashSet<>();
         existingDecls.addAll(context.getAvailableBindings());
-        existingDecls.addAll(packageModel.getGlobals().keySet());
+        existingDecls.addAll(context.getGlobals().keySet());
         if (context.getRuleUnitDescr() != null) {
             existingDecls.addAll(context.getRuleUnitDescr().getUnitVars());
         }
@@ -274,20 +272,18 @@ public class Consequence {
     public static boolean containsWord(String word, String body) {
         // $ is quite a common character for a drools binding but it's not considered a word for the regexp engine
         // By converting to a character is easier to write the regexp
-        final String wordWithDollarReplaced = word.replace("$", "犬");
-        final String bodyWithDollarReplaced = body.replace("$", "犬");
-
-        Pattern p = Pattern.compile("\\b" + wordWithDollarReplaced + "\\b");
-        Matcher m = p.matcher(bodyWithDollarReplaced);
-        return m.find();
+        final String wordWithDollarReplaced = word.replaceAll("\\$", "_DOLLAR_");
+        final String bodyWithDollarReplaced = body.replaceAll("\\$", "_DOLLAR_");
+        
+        Pattern p = Pattern.compile("\\b" + wordWithDollarReplaced + "\\b", Pattern.UNICODE_CHARACTER_CLASS);
+        return p.matcher(bodyWithDollarReplaced).find();
     }
 
     private MethodCallExpr executeCall(BlockStmt ruleVariablesBlock, BlockStmt ruleConsequence, Collection<String> verifiedDeclUsedInRHS, MethodCallExpr onCall, Set<String> modifyProperties) {
 
         for (String modifiedProperty : modifyProperties) {
             NodeList<Expression> arguments = nodeList(new NameExpr(modifiedProperty));
-            MethodCallExpr update = new MethodCallExpr(new NameExpr("drools"), "update",
-                                                       arguments);
+            MethodCallExpr update = new MethodCallExpr(new NameExpr("drools"), "update", arguments);
             ruleConsequence.getStatements().add(new ExpressionStmt(update));
         }
 

@@ -7,7 +7,7 @@
   <parent>
     <groupId>org.kie</groupId>
     <artifactId>efesto</artifactId>
-    <version>8.29.0-SNAPSHOT</version>
+    <version>8.32.0-SNAPSHOT</version>
   </parent>
   <packaging>pom</packaging>
 
@@ -16,6 +16,7 @@
 
   <modules>
     <module>efesto-common-api</module>
+    <module>efesto-common-core</module>
     <module>efesto-compilation-manager</module>
     <module>efesto-runtime-manager</module>
   </modules>

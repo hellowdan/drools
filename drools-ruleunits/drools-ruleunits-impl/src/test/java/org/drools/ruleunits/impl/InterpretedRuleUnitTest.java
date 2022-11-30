@@ -15,98 +15,49 @@
  */
 package org.drools.ruleunits.impl;
 
-import java.util.Objects;
-
-import org.drools.ruleunits.api.DataHandle;
-import org.drools.ruleunits.api.RuleUnitProvider;
 import org.drools.ruleunits.api.RuleUnitInstance;
+import org.drools.ruleunits.api.RuleUnitProvider;
+import org.drools.ruleunits.api.conf.RuleConfig;
+import org.drools.ruleunits.impl.listener.TestAgendaEventListener;
+import org.drools.ruleunits.impl.listener.TestRuleEventListener;
+import org.drools.ruleunits.impl.listener.TestRuleRuntimeEventListener;
 import org.junit.jupiter.api.Test;
-import org.kie.api.builder.CompilationErrorsException;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.fail;
 
 public class InterpretedRuleUnitTest {
 
     @Test
-    public void testHelloWorldInterpreted() {
-        HelloWorld unit = new HelloWorld();
+    public void helloWorldInterpreted() {
+        HelloWorldUnit unit = new HelloWorldUnit();
         unit.getStrings().add("Hello World");
 
-        RuleUnitInstance<HelloWorld> unitInstance = InterpretedRuleUnit.instance(unit);
-        assertThat(unitInstance.fire()).isEqualTo(1);
-        assertThat(unit.getResults()).containsExactly("it worked!");
+        try ( RuleUnitInstance<HelloWorldUnit> unitInstance = InterpretedRuleUnit.instance(unit) ) {
+            assertThat(unitInstance.fire()).isEqualTo(1);
+            assertThat(unit.getResults()).containsExactly("it worked!");
+        }
     }
 
     @Test
-    public void testHelloWorldCompiled() {
-        HelloWorld unit = new HelloWorld();
+    public void addEventListeners() {
+        TestAgendaEventListener testAgendaEventListener = new TestAgendaEventListener();
+        TestRuleRuntimeEventListener testRuleRuntimeEventListener = new TestRuleRuntimeEventListener();
+        TestRuleEventListener testRuleEventListener = new TestRuleEventListener();
+
+        RuleConfig ruleConfig = RuleUnitProvider.get().newRuleConfig();
+        ruleConfig.getAgendaEventListeners().add(testAgendaEventListener);
+        ruleConfig.getRuleRuntimeListeners().add(testRuleRuntimeEventListener);
+        ruleConfig.getRuleEventListeners().add(testRuleEventListener);
+
+        HelloWorldUnit unit = new HelloWorldUnit();
         unit.getStrings().add("Hello World");
 
-        RuleUnitInstance<HelloWorld> unitInstance = RuleUnitProvider.get().createRuleUnitInstance(unit);
-        assertThat(unitInstance.fire()).isEqualTo(1);
-        assertThat(unit.getResults()).containsExactly("it worked!");
-    }
-
-    @Test
-    public void testHelloWorldGenerated() {
-        HelloWorld unit = new HelloWorld();
-        unit.getStrings().add("Hello World");
-
-        RuleUnitInstance<HelloWorld> unitInstance = RuleUnitProvider.get().createRuleUnitInstance(unit);
-        assertThat(unitInstance.fire()).isEqualTo(1);
-        assertThat(unit.getResults()).containsExactly("it worked!");
-    }
-
-    @Test
-    public void testNotWithAndWithoutSingleQuote() {
-        NotTestUnit unit = new NotTestUnit();
-
-        RuleUnitInstance<NotTestUnit> unitInstance = RuleUnitProvider.get().createRuleUnitInstance(unit);
-        assertThat(unitInstance.fire()).isEqualTo(2);
-    }
-
-    @Test
-    public void testLogicalAdd() {
-        // KOGITO-6466
-        LogicalAddTestUnit unit = new LogicalAddTestUnit();
-
-        RuleUnitInstance<LogicalAddTestUnit> unitInstance = RuleUnitProvider.get().createRuleUnitInstance(unit);
-
-        DataHandle dh = unit.getStrings().add("abc");
-
-        assertThat(unitInstance.fire()).isEqualTo(2);
-        assertThat(unit.getResults()).containsExactly("exists");
-
-        unit.getResults().clear();
-
-        unit.getStrings().remove(dh);
-        assertThat(unitInstance.fire()).isEqualTo(1);
-        assertThat(unit.getResults()).containsExactly("not exists");
-    }
-
-    @Test
-    public void testUpdate() {
-        UpdateTestUnit unit = new UpdateTestUnit();
-
-        RuleUnitInstance<UpdateTestUnit> unitInstance = RuleUnitProvider.get().createRuleUnitInstance(unit);
-
-        unit.getPersons().add(new Person("Mario", 17));
-
-        assertThat(unitInstance.fire()).isEqualTo(2);
-        assertThat(unit.getResults()).containsExactly("ok");
-    }
-
-    @Test
-    public void testWrongType() {
-        try {
-            RuleUnitProvider.get().createRuleUnitInstance(new WronglyTypedUnit());
-            fail("Compilation should fail");
-        } catch (CompilationErrorsException e) {
-            assertThat(
-                    e.getErrorMessages().stream().map(Objects::toString)
-                            .anyMatch( s -> s.contains("The method add(Integer) in the type DataStore<Integer> is not applicable for the arguments (String)"))
-            ).isTrue();
+        try (RuleUnitInstance<HelloWorldUnit> unitInstance = InterpretedRuleUnit.instance(unit, ruleConfig)) {
+            assertThat(unitInstance.fire()).isEqualTo(1);
+            assertThat(unit.getResults()).containsExactly("it worked!");
+            assertThat(testAgendaEventListener.getResults()).containsExactly("matchCreated : HelloWorld", "beforeMatchFired : HelloWorld", "afterMatchFired : HelloWorld");
+            assertThat(testRuleRuntimeEventListener.getResults()).containsExactly("objectInserted : Hello World");
+            assertThat(testRuleEventListener.getResults()).containsExactly("onBeforeMatchFire : HelloWorld", "onAfterMatchFire : HelloWorld");
         }
     }
 }

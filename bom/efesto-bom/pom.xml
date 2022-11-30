@@ -6,7 +6,7 @@
   <parent>
     <groupId>org.kie</groupId>
     <artifactId>kie-core-bom</artifactId>
-    <version>8.29.0-SNAPSHOT</version>
+    <version>8.32.0-SNAPSHOT</version>
     <relativePath>../kie-core-bom/pom.xml</relativePath>
   </parent>
 
@@ -72,6 +72,11 @@
       <dependency>
         <groupId>org.kie</groupId>
         <artifactId>efesto-common-api</artifactId>
+        <version>${project.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>org.kie</groupId>
+        <artifactId>efesto-common-core</artifactId>
         <version>${project.version}</version>
       </dependency>
       <dependency>

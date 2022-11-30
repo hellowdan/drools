@@ -20,10 +20,14 @@ import java.util.concurrent.atomic.AtomicBoolean;
 
 import org.drools.ruleunits.api.DataHandle;
 import org.drools.ruleunits.api.DataProcessor;
-import org.drools.ruleunits.api.RuleUnitProvider;
 import org.drools.ruleunits.api.RuleUnitInstance;
+import org.drools.ruleunits.api.RuleUnitProvider;
+import org.drools.ruleunits.api.conf.RuleConfig;
 import org.drools.ruleunits.dsl.domain.Cheese;
 import org.drools.ruleunits.dsl.domain.Person;
+import org.drools.ruleunits.impl.listener.TestAgendaEventListener;
+import org.drools.ruleunits.impl.listener.TestRuleEventListener;
+import org.drools.ruleunits.impl.listener.TestRuleRuntimeEventListener;
 import org.junit.jupiter.api.Test;
 import org.kie.api.runtime.rule.FactHandle;
 
@@ -45,6 +49,8 @@ public class RuleUnitsTest {
         unit.getInts().add(11);
         assertThat(unitInstance.fire()).isEqualTo(1);
         assertThat(unit.getResults()).containsExactly("String 'Hello World' is 11 characters long");
+
+        unitInstance.close();
     }
 
     @Test
@@ -80,6 +86,8 @@ public class RuleUnitsTest {
         unit.getStrings().add("Mario");
         assertThat(unitInstance.fire()).isEqualTo(3);
         assertThat(success.get()).isTrue();
+
+        unitInstance.close();
     }
 
     @Test
@@ -92,6 +100,8 @@ public class RuleUnitsTest {
         RuleUnitInstance<SelfJoinUnit> unitInstance = RuleUnitProvider.get().createRuleUnitInstance(unit);
         assertThat(unitInstance.fire()).isEqualTo(1);
         assertThat(unit.getResults()).containsExactly("Found 'abc' and 'bcd'");
+
+        unitInstance.close();
     }
 
     @Test
@@ -123,6 +133,8 @@ public class RuleUnitsTest {
                 "Average length of Strings longer than threshold 4 is 5.5",
                 "Count of Strings above threshold is 2"
         );
+
+        unitInstance.close();
     }
 
     @Test
@@ -152,6 +164,8 @@ public class RuleUnitsTest {
         assertThat((List)unit.getResults().get("M")).containsExactlyInAnyOrder("Mario", "Marilena", "Mark");
         assertThat((List)unit.getResults().get("E")).containsExactlyInAnyOrder("Edson", "Edoardo");
         assertThat((List)unit.getResults().get("D")).containsExactlyInAnyOrder("Daniele");
+
+        unitInstance.close();
     }
 
     @Test
@@ -181,6 +195,8 @@ public class RuleUnitsTest {
         unit.getStrings().add("This is a very long String");
         assertThat(unitInstance.fire()).isEqualTo(1);
         assertThat(unit.getResults()).contains("There is at least a String longer than threshold 20");
+
+        unitInstance.close();
     }
 
     @Test
@@ -203,6 +219,8 @@ public class RuleUnitsTest {
         unit.getPersons().add(new Person("Mario", 48));
         assertThat(unitInstance.fire()).isEqualTo(1);
         assertThat(unit.getResults()).containsExactly("Found Mario who eats Mozzarella");
+
+        unitInstance.close();
     }
 
     @Test
@@ -217,6 +235,9 @@ public class RuleUnitsTest {
         assertThat(unitInstanceOne.fire()).isEqualTo(1);
         assertThat(unitInstanceTwo.fire()).isEqualTo(1);
         assertThat(unitTwo.getResults()).containsExactly("Found 11");
+
+        unitInstanceOne.close();
+        unitInstanceTwo.close();
     }
 
     @Test
@@ -225,8 +246,10 @@ public class RuleUnitsTest {
         unit.getStrings().add("abc");
         unit.getStrings().add("axy");
 
-        RuleUnitInstance<SelfJoinWithInferenceAndNotUnit> unitInstanceOne = RuleUnitProvider.get().createRuleUnitInstance(unit);
-        assertThat(unitInstanceOne.fire()).isEqualTo(1);
+        RuleUnitInstance<SelfJoinWithInferenceAndNotUnit> unitInstance = RuleUnitProvider.get().createRuleUnitInstance(unit);
+        assertThat(unitInstance.fire()).isEqualTo(1);
+
+        unitInstance.close();
     }
 
     @Test
@@ -234,15 +257,73 @@ public class RuleUnitsTest {
         LogicalAddUnit unit = new LogicalAddUnit();
         DataHandle dh = unit.getStrings().add("abc");
 
-        RuleUnitInstance<LogicalAddUnit> unitInstanceOne = RuleUnitProvider.get().createRuleUnitInstance(unit);
+        RuleUnitInstance<LogicalAddUnit> unitInstance = RuleUnitProvider.get().createRuleUnitInstance(unit);
 
-        assertThat(unitInstanceOne.fire()).isEqualTo(2);
+        assertThat(unitInstance.fire()).isEqualTo(2);
         assertThat(unit.getResults()).containsExactly("exists");
 
         unit.getResults().clear();
 
         unit.getStrings().remove(dh);
-        assertThat(unitInstanceOne.fire()).isEqualTo(1);
+        assertThat(unitInstance.fire()).isEqualTo(1);
         assertThat(unit.getResults()).containsExactly("not exists");
+
+        unitInstance.close();
+    }
+
+    @Test
+    public void testRuleUnitDefinitionReuse() {
+        // DROOLS-7181
+        SumAccumulateUnit unit = new SumAccumulateUnit();
+        RuleUnitInstance<SumAccumulateUnit> unitInstance = RuleUnitProvider.get().createRuleUnitInstance(unit);
+        int fireNr = unitInstance.fire();
+
+        assertThat(fireNr).isEqualTo(1);
+        assertThat(unit.getResults()).containsExactly(0);
+
+        SumAccumulateUnit unit2 = new SumAccumulateUnit();
+        unit2.getIntegers().add(17);
+        RuleUnitInstance<SumAccumulateUnit> unitInstance2 = RuleUnitProvider.get().createRuleUnitInstance(unit2);
+        int fireNr2 = unitInstance2.fire();
+        assertThat(fireNr2).isEqualTo(1);
+        assertThat(unit2.getResults()).containsExactly(Integer.valueOf(17));
+
+        unitInstance.close();
+        unitInstance2.close();
+    }
+
+    @Test
+    public void addEventListeners() {
+        TestAgendaEventListener testAgendaEventListener = new TestAgendaEventListener();
+        TestRuleRuntimeEventListener testRuleRuntimeEventListener = new TestRuleRuntimeEventListener();
+        TestRuleEventListener testRuleEventListener = new TestRuleEventListener();
+
+        RuleConfig ruleConfig = RuleUnitProvider.get().newRuleConfig();
+        ruleConfig.getAgendaEventListeners().add(testAgendaEventListener);
+        ruleConfig.getRuleRuntimeListeners().add(testRuleRuntimeEventListener);
+        ruleConfig.getRuleEventListeners().add(testRuleEventListener);
+
+        HelloWorldUnit unit = new HelloWorldUnit();
+        unit.getStrings().add("Hello World");
+
+        try (RuleUnitInstance<HelloWorldUnit> unitInstance = RuleUnitProvider.get().createRuleUnitInstance(unit, ruleConfig)) {
+
+            assertThat(unitInstance.fire()).isEqualTo(2);
+            assertThat(unit.getResults()).containsExactlyInAnyOrder("it worked!", "it also worked with HELLO WORLD");
+
+            assertThat(testAgendaEventListener.getResults()).hasSize(6);
+            assertThat(testAgendaEventListener.getResults().get(0)).startsWith("matchCreated");
+            assertThat(testAgendaEventListener.getResults().get(1)).startsWith("matchCreated");
+            assertThat(testAgendaEventListener.getResults().get(2)).startsWith("beforeMatchFired");
+            assertThat(testAgendaEventListener.getResults().get(3)).startsWith("afterMatchFired");
+            assertThat(testAgendaEventListener.getResults().get(4)).startsWith("beforeMatchFired");
+            assertThat(testAgendaEventListener.getResults().get(5)).startsWith("afterMatchFired");
+            assertThat(testRuleRuntimeEventListener.getResults()).containsExactly("objectInserted : Hello World");
+            assertThat(testRuleEventListener.getResults()).hasSize(4);
+            assertThat(testRuleEventListener.getResults().get(0)).startsWith("onBeforeMatchFire");
+            assertThat(testRuleEventListener.getResults().get(1)).startsWith("onAfterMatchFire");
+            assertThat(testRuleEventListener.getResults().get(2)).startsWith("onBeforeMatchFire");
+            assertThat(testRuleEventListener.getResults().get(3)).startsWith("onAfterMatchFire");
+        }
     }
 }

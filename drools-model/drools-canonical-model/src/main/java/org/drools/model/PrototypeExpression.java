@@ -19,13 +19,14 @@ import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 import org.drools.model.functions.Function1;
 import org.drools.model.functions.Function3;
 
 public interface PrototypeExpression {
-
 
     Function1<PrototypeFact, Object> asFunction(Prototype prototype);
 
@@ -37,6 +38,14 @@ public interface PrototypeExpression {
 
     static PrototypeExpression prototypeField(String fieldName) {
         return new PrototypeFieldValue(fieldName);
+    }
+
+    static PrototypeExpression prototypeArrayItem(String fieldName, int pos) {
+        return new PrototypeArrayItemValue(fieldName, pos);
+    }
+
+    default PrototypeExpression andThen(PrototypeExpression other) {
+        return new PrototypeCompositeExpression(this, other);
     }
 
     default PrototypeExpression composeWith(BinaryOperation.Operator op, PrototypeExpression right) {
@@ -102,11 +111,91 @@ public interface PrototypeExpression {
 
         @Override
         public String toString() {
-            return "PrototypeFieldValue{" + fieldName + '}';
+            return "PrototypeFieldValue{" + fieldName + "}";
         }
 
         public Collection<String> getImpactedFields() {
             return Collections.singletonList(fieldName);
+        }
+    }
+
+    class PrototypeArrayItemValue implements PrototypeExpression {
+
+        private final String fieldName;
+        private final int pos;
+
+        PrototypeArrayItemValue(String fieldName, int pos) {
+            this.fieldName = fieldName;
+            this.pos = pos;
+        }
+
+        @Override
+        public Function1<PrototypeFact, Object> asFunction(Prototype prototype) {
+            return fact -> extractArrayItem( prototype.getFieldValueExtractor(fieldName).apply(fact) );
+        }
+
+        private Object extractArrayItem(Object value) {
+            if ( value instanceof int[] ) {
+                int[] array = (int[]) value;
+                return array.length > pos ? array[pos] : Prototype.UNDEFINED_VALUE;
+            }
+            if ( value.getClass().isArray() ) {
+                Object[] array = (Object[]) value;
+                return array.length > pos ? array[pos] : Prototype.UNDEFINED_VALUE;
+            }
+            if ( value instanceof List ) {
+                List<?> list = (List<?>) value;
+                return list.size() > pos ? list.get(pos) : Prototype.UNDEFINED_VALUE;
+            }
+            return Prototype.UNDEFINED_VALUE;
+        }
+
+        public String getFieldName() {
+            return fieldName;
+        }
+
+        @Override
+        public String toString() {
+            return "PrototypeArrayItemValue{" + fieldName + "[" + pos + "]}";
+        }
+
+        public Collection<String> getImpactedFields() {
+            return Collections.singletonList(fieldName);
+        }
+    }
+
+    class PrototypeCompositeExpression implements PrototypeExpression {
+        private final PrototypeExpression first;
+        private final PrototypeExpression second;
+
+        public PrototypeCompositeExpression(PrototypeExpression first, PrototypeExpression second) {
+            this.first = first;
+            this.second = second;
+        }
+        public Function1<PrototypeFact, Object> asFunction(Prototype prototype) {
+            return first.asFunction(prototype).andThen(this::object2PrototypeFact).andThen(second.asFunction(prototype));
+        }
+
+        private PrototypeFact object2PrototypeFact(Object object) {
+            if (object == Prototype.UNDEFINED_VALUE) {
+                return PrototypeFactFactory.get().createMapBasedFact(PrototypeDSL.DEFAULT_PROTOTYPE);
+            }
+            if (object instanceof PrototypeFact) {
+                return (PrototypeFact) object;
+            }
+            if (object instanceof Map) {
+                return PrototypeFactFactory.get().createMapBasedFact(PrototypeDSL.DEFAULT_PROTOTYPE, (Map<String, Object>) object);
+            }
+            throw new UnsupportedOperationException("Cannot convert " + object + " into a Prototype");
+        }
+
+        @Override
+        public String toString() {
+            return "PrototypeCompisiteExpression{" + first + " composed with " + second + "}";
+        }
+
+        public Collection<String> getImpactedFields() {
+            return first.getImpactedFields();
         }
     }
 
@@ -139,9 +228,9 @@ public interface PrototypeExpression {
                     if (leftValue instanceof Integer && rightValue instanceof Integer) {
                         return ((Integer) leftValue).intValue() + ((Integer) rightValue).intValue();
                     }
-                    if (leftValue == null) {
+                    if (leftValue == null || leftValue == Prototype.UNDEFINED_VALUE) {
                         return rightValue == null ? 0 : rightValue;
-                    } else if (rightValue == null) {
+                    } else if (rightValue == null || rightValue == Prototype.UNDEFINED_VALUE) {
                         return leftValue;
                     }
                     return ((Number) leftValue).doubleValue() + ((Number) rightValue).doubleValue();
@@ -156,9 +245,9 @@ public interface PrototypeExpression {
                     if (leftValue instanceof Integer && rightValue instanceof Integer) {
                         return ((Integer) leftValue).intValue() - ((Integer) rightValue).intValue();
                     }
-                    if (leftValue == null) {
+                    if (leftValue == null || leftValue == Prototype.UNDEFINED_VALUE) {
                         return rightValue == null ? 0 : rightValue;
-                    } else if (rightValue == null) {
+                    } else if (rightValue == null || rightValue == Prototype.UNDEFINED_VALUE) {
                         return leftValue;
                     }
                     return ((Number) leftValue).doubleValue() - ((Number) rightValue).doubleValue();
@@ -173,7 +262,7 @@ public interface PrototypeExpression {
                     if (leftValue instanceof Integer && rightValue instanceof Integer) {
                         return ((Integer) leftValue).intValue() * ((Integer) rightValue).intValue();
                     }
-                    if (leftValue == null || rightValue == null) {
+                    if (leftValue == null || leftValue == Prototype.UNDEFINED_VALUE || rightValue == null || rightValue == Prototype.UNDEFINED_VALUE) {
                         return 0;
                     }
                     return ((Number) leftValue).doubleValue() * ((Number) rightValue).doubleValue();
@@ -188,7 +277,7 @@ public interface PrototypeExpression {
                     if (leftValue instanceof Integer && rightValue instanceof Integer) {
                         return ((Integer) leftValue).intValue() / ((Integer) rightValue).intValue();
                     }
-                    if (leftValue == null || rightValue == null) {
+                    if (leftValue == null || leftValue == Prototype.UNDEFINED_VALUE || rightValue == null || rightValue == Prototype.UNDEFINED_VALUE) {
                         return 0;
                     }
                     return ((Number) leftValue).doubleValue() / ((Number) rightValue).doubleValue();

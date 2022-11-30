@@ -15,6 +15,8 @@
  */
 package org.drools.ruleunits.api;
 
+import org.drools.ruleunits.api.conf.RuleConfig;
+
 /**
  * A rule unit is an atomic module defining a set of rules and a set of strongly typed {@link DataSource}s through which
  * the facts processed by the rule engine are inserted. Users never need to implement this interface since the concrete
@@ -26,12 +28,13 @@ package org.drools.ruleunits.api;
  */
 public interface RuleUnit<T extends RuleUnitData> {
 
-    // TODO this method is a leaky abstraction and should be removed from the public API
-    String id();
+    /**
+     * Creates a {@link RuleUnitInstance} using the given {@link RuleUnitData}.
+     */
+    RuleUnitInstance<T> createInstance(T data);
 
-    default RuleUnitInstance<T> createInstance(T data) {
-        return createInstance(data, null);
-    }
-
-    RuleUnitInstance<T> createInstance(T data, String name);
+    /**
+     * Creates a {@link RuleUnitInstance} using the given {@link RuleUnitData} and {@link RuleConfig}.
+     */
+    RuleUnitInstance<T> createInstance(T data, RuleConfig ruleConfig);
 }

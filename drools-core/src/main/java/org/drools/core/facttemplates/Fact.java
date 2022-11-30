@@ -27,4 +27,8 @@ public interface Fact {
     Map<String, Object> asMap();
 
     FactTemplate getFactTemplate();
+
+    default boolean isEvent() {
+        return false;
+    }
 }
