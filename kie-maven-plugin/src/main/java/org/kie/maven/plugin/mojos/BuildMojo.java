@@ -48,6 +48,9 @@ public class BuildMojo extends AbstractKieMojo {
         executeGeneratePMMLModel(kieMavenPluginContext);
         executeGenerateANC(kieMavenPluginContext);
         executeBuildDRL(kieMavenPluginContext);
+
+        getLog().info(System.getProperty("org.drools.equalitymemory"));
+        getLog().info(System.getProperty("org.drools.comparisonmemory"));
     }
 
     private void executeGenerateModel(final KieMavenPluginContext kieMavenPluginContext) throws MojoExecutionException, MojoFailureException {
