@@ -49,7 +49,9 @@ public class BuildMojo extends AbstractKieMojo {
         executeGenerateANC(kieMavenPluginContext);
         executeBuildDRL(kieMavenPluginContext);
 
+        getLog().info("org.drools.equalitymemory:");
         getLog().info(System.getProperty("org.drools.equalitymemory"));
+        getLog().info("org.drools.comparisonmemory:");
         getLog().info(System.getProperty("org.drools.comparisonmemory"));
     }
 
