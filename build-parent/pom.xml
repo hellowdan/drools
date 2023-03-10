@@ -1599,6 +1599,7 @@
               <org.uberfire.nio.git.daemon.enabled>false</org.uberfire.nio.git.daemon.enabled>
               <org.uberfire.nio.git.ssh.enabled>false</org.uberfire.nio.git.ssh.enabled>
               <org.uberfire.sys.repo.monitor.disabled>true</org.uberfire.sys.repo.monitor.disabled>
+              <drools.useEagerSegmentCreation>true</drools.useEagerSegmentCreation>
             </systemPropertyVariables>
           </configuration>
         </plugin>
